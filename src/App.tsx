@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { KostProvider, useKost } from './context/KostContext';
 import { Navbar } from './components/Navbar';

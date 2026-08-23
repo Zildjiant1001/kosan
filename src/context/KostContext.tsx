@@ -1,3 +1,5 @@
+'use client';
+
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   UserRole,
@@ -212,6 +214,7 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Core Data loaded from localStorage or initial clean state
   const [rooms, setRooms] = useState<Room[]>(() => {
+    if (typeof window === 'undefined') return initialRooms;
     try {
       const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_ROOMS`);
       if (saved) {
@@ -236,62 +239,106 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [tenants, setTenants] = useState<Tenant[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_TENANTS`);
-    return saved ? JSON.parse(saved) : initialTenants;
+    if (typeof window === 'undefined') return initialTenants;
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_TENANTS`);
+      return saved ? JSON.parse(saved) : initialTenants;
+    } catch {
+      return initialTenants;
+    }
   });
 
   const [bookings, setBookings] = useState<RentalBooking[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_BOOKINGS`);
-    return saved ? JSON.parse(saved) : initialBookings;
+    if (typeof window === 'undefined') return initialBookings;
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_BOOKINGS`);
+      return saved ? JSON.parse(saved) : initialBookings;
+    } catch {
+      return initialBookings;
+    }
   });
 
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_INVOICES`);
-    return saved ? JSON.parse(saved) : initialInvoices;
+    if (typeof window === 'undefined') return initialInvoices;
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_INVOICES`);
+      return saved ? JSON.parse(saved) : initialInvoices;
+    } catch {
+      return initialInvoices;
+    }
   });
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_EXPENSES`);
-    return saved ? JSON.parse(saved) : initialExpenses;
+    if (typeof window === 'undefined') return initialExpenses;
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_EXPENSES`);
+      return saved ? JSON.parse(saved) : initialExpenses;
+    } catch {
+      return initialExpenses;
+    }
   });
 
   const [tickets, setTickets] = useState<MaintenanceTicket[]>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_TICKETS`);
-    return saved ? JSON.parse(saved) : initialTickets;
+    if (typeof window === 'undefined') return initialTickets;
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_TICKETS`);
+      return saved ? JSON.parse(saved) : initialTickets;
+    } catch {
+      return initialTickets;
+    }
   });
 
   const [settings, setSettings] = useState<KostSettings>(() => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_SETTINGS`);
-    return saved ? JSON.parse(saved) : initialKostSettings;
+    if (typeof window === 'undefined') return initialKostSettings;
+    try {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY}_SETTINGS`);
+      return saved ? JSON.parse(saved) : initialKostSettings;
+    } catch {
+      return initialKostSettings;
+    }
   });
 
   // Sync with LocalStorage
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_ROOMS`, JSON.stringify(rooms));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_ROOMS`, JSON.stringify(rooms));
+    }
   }, [rooms]);
 
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_TENANTS`, JSON.stringify(tenants));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_TENANTS`, JSON.stringify(tenants));
+    }
   }, [tenants]);
 
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_BOOKINGS`, JSON.stringify(bookings));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_BOOKINGS`, JSON.stringify(bookings));
+    }
   }, [bookings]);
 
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_INVOICES`, JSON.stringify(invoices));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_INVOICES`, JSON.stringify(invoices));
+    }
   }, [invoices]);
 
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_EXPENSES`, JSON.stringify(expenses));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_EXPENSES`, JSON.stringify(expenses));
+    }
   }, [expenses]);
 
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_TICKETS`, JSON.stringify(tickets));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_TICKETS`, JSON.stringify(tickets));
+    }
   }, [tickets]);
 
   useEffect(() => {
-    localStorage.setItem(`${LOCAL_STORAGE_KEY}_SETTINGS`, JSON.stringify(settings));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY}_SETTINGS`, JSON.stringify(settings));
+    }
   }, [settings]);
 
   // Firestore Real-time Listeners and Auto-Seed
