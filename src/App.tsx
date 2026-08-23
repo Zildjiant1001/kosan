@@ -59,6 +59,7 @@ const MainKostApp: React.FC = () => {
   const [activeInvoiceForReceipt, setActiveInvoiceForReceipt] = useState<Invoice | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState<boolean>(false);
+  const [authDefaultRole, setAuthDefaultRole] = useState<'pemilik' | 'penghuni'>('pemilik');
 
   const summary = getMonthlySummary(activeReportMonth);
 
@@ -76,19 +77,40 @@ const MainKostApp: React.FC = () => {
 
   if (currentView === 'landing') {
     return (
-      <LandingPage
-        onEnterPortal={(targetRole) => {
-          if (targetRole) {
+      <>
+        <LandingPage
+          onEnterPortal={(targetRole) => {
+            if (targetRole) {
+              setRole(targetRole);
+              if (targetRole === 'penghuni') {
+                setActiveTab('tenant_home');
+              } else {
+                setActiveTab('dashboard');
+              }
+            }
+            setCurrentView('portal');
+          }}
+          onOpenLoginModal={(targetRole) => {
+            setAuthDefaultRole(targetRole || 'pemilik');
+            setIsGoogleAuthOpen(true);
+          }}
+        />
+
+        <GoogleAuthModal
+          isOpen={isGoogleAuthOpen}
+          defaultRole={authDefaultRole}
+          onClose={() => setIsGoogleAuthOpen(false)}
+          onSuccessRedirect={(targetRole) => {
             setRole(targetRole);
             if (targetRole === 'penghuni') {
               setActiveTab('tenant_home');
             } else {
               setActiveTab('dashboard');
             }
-          }
-          setCurrentView('portal');
-        }}
-      />
+            setCurrentView('portal');
+          }}
+        />
+      </>
     );
   }
 
@@ -99,7 +121,10 @@ const MainKostApp: React.FC = () => {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenGoogleAuth={() => setIsGoogleAuthOpen(true)}
+        onOpenGoogleAuth={() => {
+          setAuthDefaultRole(role);
+          setIsGoogleAuthOpen(true);
+        }}
         onGoToLanding={() => setCurrentView('landing')}
       />
 
@@ -341,7 +366,16 @@ const MainKostApp: React.FC = () => {
 
       <GoogleAuthModal
         isOpen={isGoogleAuthOpen}
+        defaultRole={authDefaultRole}
         onClose={() => setIsGoogleAuthOpen(false)}
+        onSuccessRedirect={(targetRole) => {
+          setRole(targetRole);
+          if (targetRole === 'penghuni') {
+            setActiveTab('tenant_home');
+          } else {
+            setActiveTab('dashboard');
+          }
+        }}
       />
 
       {/* Footer */}

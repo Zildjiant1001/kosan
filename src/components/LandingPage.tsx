@@ -41,9 +41,10 @@ import {
 
 interface LandingPageProps {
   onEnterPortal: (targetRole?: 'pemilik' | 'penghuni') => void;
+  onOpenLoginModal?: (targetRole?: 'pemilik' | 'penghuni') => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onEnterPortal }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onEnterPortal, onOpenLoginModal }) => {
   const { rooms, settings } = useKost();
 
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'available' | 'deluxe' | 'superior' | 'standard'>('all');
@@ -215,23 +216,37 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterPortal }) => {
               <span>WhatsApp</span>
             </button>
 
-            {/* Enter Portal Button */}
-            <div className="flex items-center gap-1.5">
+            {/* Separate Entrance Buttons */}
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => onEnterPortal('penghuni')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition cursor-pointer shadow-xs"
+                id="btn-landing-portal-penghuni"
+                onClick={() => {
+                  if (onOpenLoginModal) {
+                    onOpenLoginModal('penghuni');
+                  } else {
+                    onEnterPortal('penghuni');
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer shadow-xs"
               >
-                <User className="w-3.5 h-3.5 text-emerald-400" />
+                <User className="w-3.5 h-3.5" />
                 <span>Portal Penghuni</span>
               </button>
 
               <button
-                onClick={() => onEnterPortal('pemilik')}
-                className="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition cursor-pointer"
-                title="Login khusus pemilik / pengelola kos"
+                id="btn-landing-login-pemilik"
+                onClick={() => {
+                  if (onOpenLoginModal) {
+                    onOpenLoginModal('pemilik');
+                  } else {
+                    onEnterPortal('pemilik');
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-600/30 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition cursor-pointer shadow-2xs"
+                title="Akses khusus pemilik kos & pengelola"
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
-                <span>Pengelola</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Akun Pemilik</span>
               </button>
             </div>
           </div>
