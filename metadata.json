@@ -1,0 +1,6 @@
+{
+  "name": "KostHub 8 - Manajemen Kos & QRIS",
+  "description": "Aplikasi manajemen kos-kosan 8 pintu dengan Landing Page iklan publik, kalkulator sewa, pembayaran QRIS, akses role pemilik & penghuni, serta laporan keuangan bulanan lengkap.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

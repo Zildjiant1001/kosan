@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection check document
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // Rooms collection (8 rooms)
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow write: if isValidId(roomId);
+    }
+
+    // Tenants collection
+    match /tenants/{tenantId} {
+      allow read: if true;
+      allow write: if isValidId(tenantId);
+    }
+
+    // Rental Bookings / Inquiries collection
+    match /bookings/{bookingId} {
+      allow read: if true;
+      allow write: if isValidId(bookingId);
+    }
+
+    // Invoices collection
+    match /invoices/{invoiceId} {
+      allow read: if true;
+      allow write: if isValidId(invoiceId);
+    }
+
+    // Expenses collection
+    match /expenses/{expenseId} {
+      allow read: if true;
+      allow write: if isValidId(expenseId);
+    }
+
+    // Maintenance Tickets collection
+    match /tickets/{ticketId} {
+      allow read: if true;
+      allow write: if isValidId(ticketId);
+    }
+
+    // Settings collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isValidId(settingId);
+    }
+  }
+}
