@@ -24,7 +24,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-slate-50 text-slate-900 antialiased selection:bg-emerald-600 selection:text-white min-h-screen">
-        {children}
+        <KostProvider>{children}</KostProvider>
       </body>
     </html>
   );

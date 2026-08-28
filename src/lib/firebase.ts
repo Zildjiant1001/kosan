@@ -10,14 +10,25 @@ import {
   setPersistence,
   browserLocalPersistence,
 } from 'firebase/auth';
+import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export { firebaseConfig };
 
 // Initialize Firebase App instance safely
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
+export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// Initialize Analytics conditionally in browser
+export let analytics: any = null;
+if (typeof window !== 'undefined') {
+  isSupported().then(yes => {
+    if (yes) {
+      analytics = getAnalytics(app);
+    }
+  }).catch(() => {});
+}
 
 // Configure Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
@@ -38,11 +49,13 @@ export async function signInWithGoogle(): Promise<User | null> {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (error: any) {
+    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+      // User closed the popup intentionally or switched tabs; not a fatal error
+      console.info('Google Sign-In popup was closed by user.');
+      return null;
+    }
     console.error('Google Sign-In Error:', error);
-    // Propagate error with friendly Indonesian message
-    if (error.code === 'auth/popup-closed-by-user') {
-      throw new Error('Jendela login Google ditutup sebelum proses selesai.');
-    } else if (error.code === 'auth/popup-blocked') {
+    if (error.code === 'auth/popup-blocked') {
       throw new Error('Jendela popup diblokir oleh browser. Harap izinkan popup di browser Anda.');
     } else if (error.code === 'auth/unauthorized-domain') {
       throw new Error(

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useKost } from '../context/KostContext';
 import {
   Building2,
@@ -14,6 +15,13 @@ import {
   Bell,
   Home,
   Users,
+  User,
+  Shield,
+  ChevronDown,
+  ExternalLink,
+  LogOut,
+  SlidersHorizontal,
+  Globe,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -44,7 +52,15 @@ export const Navbar: React.FC<NavbarProps> = ({
     resetToDefaultData,
     currentUser,
     isCloudConnected,
+    users,
+    branches,
+    selectedBranchId,
+    setSelectedBranchId,
+    activeAppUser,
+    logoutAppUser,
   } = useKost();
+
+  const router = useRouter();
 
   const pendingPaymentsCount = invoices.filter(
     i => i.status === 'menunggu_verifikasi'
@@ -55,182 +71,248 @@ export const Navbar: React.FC<NavbarProps> = ({
   ).length;
 
   const pendingTicketsCount = tickets.filter(t => t.status === 'menunggu' || t.status === 'diproses').length;
+  const pendingApprovalsCount = users.filter(u => u.status === 'pending_approval').length;
   const [showResetModal, setShowResetModal] = useState(false);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+
+  const isOwnerOrSuperAdmin = role === 'pemilik' || activeAppUser?.role === 'superadmin' || activeAppUser?.role === 'pemilik';
 
   return (
-    <header id="main-header" className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-900 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <header id="main-header" className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-900 shadow-xs w-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="flex items-center justify-between h-16 gap-4">
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab(role === 'pemilik' ? 'dashboard' : 'tenant_home')}>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-sm text-white font-bold text-lg">
-              <Building2 className="w-6 h-6" />
+          <div
+            className="flex items-center gap-3 cursor-pointer select-none"
+            onClick={() => setActiveTab(role === 'pemilik' ? 'dashboard' : 'tenant_home')}
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-xs text-white font-bold text-lg hover:scale-105 transition-transform duration-200">
+              <Building2 className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-lg tracking-tight text-slate-900 font-heading">
-                  {settings.kostName}
+                  Smart Kosan
                 </span>
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  8 Pintu
+                <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {selectedBranchId === 'all' 
+                    ? `Semua Cabang (${branches.length})` 
+                    : (branches.find(b => b.id === selectedBranchId)?.code || `${rooms.length} Pintu`)}
                 </span>
+                {role === 'penghuni' && (
+                  <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Kamar 0{selectedTenantRoomId}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
-                Sistem Manajemen Kos & Pembayaran QRIS Dinamis
+                smart system for property bussines
               </p>
             </div>
           </div>
 
-          {/* Center / Role Switcher Header */}
-          <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              id="btn-goto-landing"
-              onClick={onGoToLanding}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 transition cursor-pointer"
-              title="Lihat Landing Page Iklan & Informasi Umum"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden sm:inline">Website Iklan</span>
-            </button>
-
-            <button
-              id="role-btn-pemilik"
-              onClick={() => {
-                setRole('pemilik');
-                setActiveTab('dashboard');
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                role === 'pemilik'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Akun Pemilik</span>
-              {pendingPaymentsCount > 0 && (
-                <span className="ml-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] font-extrabold flex items-center justify-center animate-pulse">
-                  {pendingPaymentsCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              id="role-btn-penghuni"
-              onClick={() => {
-                setRole('penghuni');
-                setActiveTab('tenant_home');
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                role === 'penghuni'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>Portal Penghuni</span>
-            </button>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="flex items-center gap-2">
-            {/* Google Authentication Trigger Button */}
-            {currentUser ? (
-              <button
-                id="btn-google-user-profile"
-                onClick={onOpenGoogleAuth}
-                title={`Login sebagai ${currentUser.displayName || currentUser.email}`}
-                className="flex items-center gap-2 bg-white hover:bg-slate-50 border border-emerald-200 shadow-2xs rounded-xl py-1 px-2.5 transition cursor-pointer group"
-              >
-                {currentUser.photoURL ? (
-                  <img
-                    src={currentUser.photoURL}
-                    alt={currentUser.displayName || 'Google Avatar'}
-                    className="w-6 h-6 rounded-full border border-emerald-400 object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                    {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'G'}
-                  </div>
-                )}
-                <div className="text-left hidden lg:block">
-                  <div className="text-[11px] font-bold text-slate-800 leading-tight truncate max-w-[100px]">
-                    {currentUser.displayName ? currentUser.displayName.split(' ')[0] : 'Akun Google'}
-                  </div>
-                  <div className="text-[9px] text-emerald-600 font-semibold leading-none flex items-center gap-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                    Terhubung
-                  </div>
-                </div>
-              </button>
-            ) : (
-              <button
-                id="btn-google-auth-login"
-                onClick={onOpenGoogleAuth}
-                className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-2xs rounded-xl py-1.5 px-3 transition cursor-pointer text-xs font-bold text-slate-700"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                  />
-                </svg>
-                <span className="hidden sm:inline">Masuk Google</span>
-              </button>
-            )}
-
-            {role === 'penghuni' ? (
-              <div className="flex items-center gap-2 bg-white border border-slate-200 shadow-xs rounded-xl px-2.5 py-1">
-                <span className="text-xs text-slate-500 font-medium hidden md:inline">Pilih Kamar:</span>
+          {/* Right Header Controls: Global Branch Selector + Unified Profile Dropdown */}
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Global Branch Selector (For Owner & Super Admin) */}
+            {role === 'pemilik' && branches.length > 0 && (
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-slate-300 rounded-2xl px-2.5 sm:px-3 py-1.5 shadow-2xs transition-all duration-150">
+                <Building2 className="w-4 h-4 text-teal-600 shrink-0" />
+                <span className="text-xs text-slate-600 font-semibold hidden md:inline whitespace-nowrap">Cabang:</span>
                 <select
-                  id="tenant-room-selector"
-                  value={selectedTenantRoomId}
-                  onChange={e => setSelectedTenantRoomId(Number(e.target.value))}
-                  className="bg-slate-50 text-blue-700 text-xs font-semibold rounded-lg border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  id="global-navbar-branch-select"
+                  value={selectedBranchId}
+                  onChange={e => setSelectedBranchId(e.target.value)}
+                  className="bg-transparent text-slate-800 text-xs font-bold focus:outline-none cursor-pointer max-w-[130px] sm:max-w-[200px] truncate"
+                  title="Pilih Cabang Properti Global"
                 >
-                  {rooms.map(room => (
-                    <option key={room.id} value={room.id}>
-                      {room.roomNumber} ({room.tenant ? room.tenant.name.split(' ')[0] : 'Kosong'})
+                  <option value="all">🌟 Semua Cabang ({branches.length})</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.code})
                     </option>
                   ))}
                 </select>
               </div>
-            ) : (
-              <button
-                id="btn-open-settings"
-                onClick={onOpenSettings}
-                title="Pengaturan Kos & QRIS"
-                className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200 shadow-xs transition cursor-pointer"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
             )}
 
-            <button
-              id="btn-reset-demo"
-              onClick={() => setShowResetModal(true)}
-              title="Reset data demo ke awal"
-              className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-400 hover:text-amber-600 border border-slate-200 shadow-xs transition cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4" />
+            {/* Unified Profile & Status Badge with Dropdown */}
+            <div className="relative z-50">
+              <button
+                type="button"
+                onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                className="flex items-center gap-2.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 shadow-xs rounded-2xl py-1.5 px-3 transition-all duration-150 cursor-pointer group"
+              >
+              {/* Avatar Icon / Profile Photo */}
+              <img
+                src={
+                  currentUser?.photoURL ||
+                  activeAppUser?.avatarUrl ||
+                  (role === 'pemilik'
+                    ? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80'
+                    : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80')
+                }
+                alt={currentUser?.displayName || activeAppUser?.name || 'Profile'}
+                className="w-7 h-7 rounded-xl border border-emerald-400/80 object-cover shrink-0 shadow-2xs"
+              />
+
+              {/* Identity Details */}
+              <div className="text-left hidden sm:block">
+                <div className="text-xs font-bold text-slate-800 leading-tight truncate max-w-[120px]">
+                  {currentUser?.displayName || activeAppUser?.name || (role === 'pemilik' ? 'Akun Pemilik' : 'Penghuni Kos')}
+                </div>
+                <div className="text-[10px] text-slate-500 font-medium leading-none flex items-center gap-1 mt-0.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${role === 'pemilik' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                  <span>{role === 'pemilik' ? 'Pengelola' : `Penghuni K0${selectedTenantRoomId}`}</span>
+                </div>
+              </div>
+
+              {/* Notification Badges inside Dropdown Trigger */}
+              {(pendingPaymentsCount > 0 || pendingApprovalsCount > 0) && (
+                <span className="w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] font-black flex items-center justify-center animate-pulse">
+                  {pendingPaymentsCount + pendingApprovalsCount}
+                </span>
+              )}
+
+              <ChevronDown
+                className={`w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 ${
+                  isProfileDropdownOpen ? 'rotate-180' : ''
+                }`}
+              />
             </button>
+
+            {/* Profile Dropdown Menu */}
+            {isProfileDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-60"
+                  onClick={() => setIsProfileDropdownOpen(false)}
+                />
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl z-70 p-2 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                  {/* Account Header Info */}
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 mb-1 flex items-center gap-2.5">
+                    <img
+                      src={
+                        currentUser?.photoURL ||
+                        activeAppUser?.avatarUrl ||
+                        (role === 'pemilik'
+                          ? 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80'
+                          : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80')
+                      }
+                      alt={currentUser?.displayName || activeAppUser?.name || 'Profile'}
+                      className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0 shadow-2xs"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-slate-800 truncate">
+                        {currentUser?.displayName || activeAppUser?.name || (role === 'pemilik' ? 'Pemilik Kos Griya' : 'Penghuni Kos')}
+                      </p>
+                      <p className="text-[10px] text-slate-500 truncate">
+                        {currentUser?.email || activeAppUser?.email || settings.ownerEmail}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-bold text-emerald-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>{isCloudConnected ? 'Cloud Online' : 'Lokal Mode'}</span>
+                        <span className="text-slate-300">&bull;</span>
+                        <span className="uppercase">{role}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Switch Section: Only Super Admin can switch to Enterprise */}
+                  {activeAppUser?.role === 'superadmin' && (
+                    <div className="p-1 rounded-xl bg-slate-100/80 border border-slate-200 flex items-center gap-1 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRole('pemilik');
+                          setActiveTab('dashboard');
+                          setIsProfileDropdownOpen(false);
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold transition text-center ${
+                          activeTab !== 'enterprise' && role === 'pemilik'
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Pemilik
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          router.push('/enterprise');
+                          setIsProfileDropdownOpen(false);
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold transition text-center relative ${
+                          activeTab === 'enterprise'
+                            ? 'bg-amber-600 text-white shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>Enterprise</span>
+                        {pendingApprovalsCount > 0 && (
+                          <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[9px] font-black">
+                            {pendingApprovalsCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Pengaturan Kos (Owner) */}
+                  {role === 'pemilik' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileDropdownOpen(false);
+                        onOpenSettings();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      <Settings className="w-4 h-4 text-slate-500" />
+                      <span>Pengaturan Kos & QRIS</span>
+                    </button>
+                  )}
+
+                  {/* Reset Demo Data (Owner/Superadmin only) */}
+                  {role !== 'penghuni' && activeAppUser?.role !== 'penghuni' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsProfileDropdownOpen(false);
+                        setShowResetModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-xs font-semibold text-slate-500 hover:text-amber-700 hover:bg-amber-50/50 transition cursor-pointer"
+                    >
+                      <RotateCcw className="w-4 h-4 text-slate-400" />
+                      <span>Reset Data Demo Kos</span>
+                    </button>
+                  )}
+
+                  {/* Direct Logout Option */}
+                  <div className="my-1 border-t border-slate-100" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileDropdownOpen(false);
+                      logoutAppUser();
+                      if (typeof window !== 'undefined') {
+                        window.location.href = '/login';
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-xs font-bold text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-500" />
+                    <span>Keluar Akun (Logout)</span>
+                  </button>
+                </div>
+              </>
+            )}
+            </div>
           </div>
         </div>
 
         {/* Navigation Tabs Bar for Owner */}
         {role === 'pemilik' && (
-          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto py-2.5 border-t border-slate-100 no-scrollbar">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-2.5 border-t border-slate-100 w-full">
             <button
               id="nav-tab-dashboard"
               onClick={() => setActiveTab('dashboard')}
@@ -241,7 +323,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Home className="w-3.5 h-3.5" />
-              <span>Kamar 8 Pintu</span>
+              <span>Halaman Utama</span>
             </button>
 
             <button
@@ -254,7 +336,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              <span>Data Penyewa & Booking</span>
+              <span>Data Penyewa</span>
               {pendingBookingsCount > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white font-bold text-[10px]">
                   {pendingBookingsCount}
@@ -271,9 +353,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="font-semibold text-emerald-800">Laporan Bulanan Online</span>
-              <span className="px-1.5 py-0.2 rounded text-[10px] bg-emerald-100 text-emerald-800 font-bold">Khusus Pemilik</span>
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Laporan Bulanan</span>
             </button>
 
             <button
@@ -324,12 +405,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               )}
             </button>
+
+            <button
+              id="nav-tab-account-owner"
+              onClick={() => setActiveTab('account')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                activeTab === 'account'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Pengaturan Akun</span>
+            </button>
           </div>
         )}
 
         {/* Navigation Tabs Bar for Tenant */}
         {role === 'penghuni' && (
-          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto py-2.5 border-t border-slate-100 no-scrollbar">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 py-2.5 border-t border-slate-100 w-full">
             <button
               id="tenant-nav-tab-home"
               onClick={() => setActiveTab('tenant_home')}
@@ -367,6 +461,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Tata Tertib & Fasilitas Kos</span>
+            </button>
+
+            <button
+              id="tenant-nav-tab-account"
+              onClick={() => setActiveTab('account')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                activeTab === 'account'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Profil & Akun</span>
             </button>
           </div>
         )}

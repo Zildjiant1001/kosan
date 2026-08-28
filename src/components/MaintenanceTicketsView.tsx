@@ -10,6 +10,7 @@ import {
   Plus,
   Filter,
   Building,
+  Building2,
   User,
   Zap,
   Droplets,
@@ -22,32 +23,58 @@ interface MaintenanceTicketsViewProps {
 }
 
 export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ isTenantView = false }) => {
-  const { tickets, rooms, updateTicketStatus, createTicket, selectedTenantRoomId } = useKost();
+  const {
+    tickets,
+    rooms,
+    allRooms,
+    updateTicketStatus,
+    createTicket,
+    selectedTenantRoomId,
+    branches,
+    selectedBranchId,
+    role,
+    activeAppUser,
+  } = useKost();
+
+  const isTenant = isTenantView || role === 'penghuni' || activeAppUser?.role === 'penghuni';
+  const assignedRoomId = (activeAppUser?.role === 'penghuni' && activeAppUser.assignedRoomId) || selectedTenantRoomId || 1;
+  const assignedRoom = (allRooms && allRooms.find(r => r.id === assignedRoomId)) ||
+                       (rooms && rooms.find(r => r.id === assignedRoomId)) ||
+                       rooms[0];
+  const assignedBranch = (assignedRoom?.branchId && branches.find(b => b.id === assignedRoom.branchId)) || branches[0];
+
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
 
   // New Ticket State
-  const [ticketRoomId, setTicketRoomId] = useState<number>(selectedTenantRoomId || 1);
+  const [ticketRoomId, setTicketRoomId] = useState<number>(assignedRoomId);
   const [ticketTitle, setTicketTitle] = useState('');
   const [ticketDescription, setTicketDescription] = useState('');
   const [ticketCategory, setTicketCategory] = useState<TicketCategory>('ac');
   const [ticketPriority, setTicketPriority] = useState<TicketPriority>('sedang');
 
   const filteredTickets = tickets.filter(t => {
-    if (isTenantView && t.roomId !== selectedTenantRoomId) return false;
+    if (isTenant && t.roomId !== assignedRoomId) return false;
     if (filterStatus !== 'all' && t.status !== filterStatus) return false;
     return true;
   });
 
   const handleCreateTicketSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const room = rooms.find(r => r.id === Number(ticketRoomId));
-    if (!room) return;
+    if (!ticketTitle.trim()) return;
+
+    const targetRoomId = isTenant ? assignedRoomId : Number(ticketRoomId);
+    const room = (allRooms && allRooms.find(r => r.id === targetRoomId)) ||
+                 (rooms && rooms.find(r => r.id === targetRoomId));
+    const targetBranch = (room?.branchId && branches.find(b => b.id === room.branchId)) || assignedBranch || branches[0];
 
     createTicket({
-      roomId: room.id,
-      roomNumber: room.roomNumber,
-      tenantName: room.tenant?.name || 'Penghuni ' + room.roomNumber,
+      branchId: room?.branchId || targetBranch?.id || 'branch-01',
+      roomId: targetRoomId,
+      roomNumber: room ? room.roomNumber : `Kamar 0${targetRoomId}`,
+      tenantName: isTenant
+        ? (activeAppUser?.name || room?.tenant?.name || 'Penghuni Kamar')
+        : (room?.tenant ? room.tenant.name : 'Penghuni Kamar'),
       title: ticketTitle,
       description: ticketDescription,
       category: ticketCategory,
@@ -76,43 +103,51 @@ export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ 
   };
 
   return (
-    <div id="maintenance-tickets-view" className="space-y-5">
-      {/* Top Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
-              <Wrench className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 font-heading">
-                {isTenantView ? 'Layanan Keluhan & Perbaikan Kamar' : 'Manajemen Tiket Keluhan & Perbaikan'}
-              </h2>
-              <p className="text-xs text-slate-500">
-                Laporan kerusakan fasilitas, servis AC berkala & perbaikan kamar kos
-              </p>
-            </div>
+    <div id="maintenance-tickets-view" className="space-y-6 animate-in fade-in duration-200">
+      {/* Top Standardized Header */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200 flex items-center gap-1.5 shadow-2xs">
+              <Wrench className="w-3.5 h-3.5" />
+              <span>Helpdesk & Maintenance</span>
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-bold border border-teal-200 flex items-center gap-1 shadow-2xs">
+              <Building2 className="w-3 h-3" />
+              <span>{selectedBranchId === 'all' ? `Semua Cabang (${branches.length})` : (branches.find(b => b.id === selectedBranchId)?.name || 'Cabang')}</span>
+            </span>
           </div>
+
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-heading tracking-tight">
+            {isTenantView ? 'Layanan Keluhan & Perbaikan Kamar' : 'Manajemen Tiket Keluhan & Perbaikan'}
+          </h1>
+          <p className="text-xs text-slate-500">
+            Laporan kerusakan fasilitas, servis AC berkala, perbaikan kelistrikan dan pipa air secara terstruktur.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
-          >
-            <option value="all">Semua Status</option>
-            <option value="menunggu">Menunggu Ditangani</option>
-            <option value="diproses">Sedang Dikerjakan</option>
-            <option value="selesai">Selesai Diperbaiki</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs shadow-2xs">
+            <Filter className="w-4 h-4 text-slate-500 shrink-0" />
+            <span className="text-slate-600 font-semibold whitespace-nowrap">Status:</span>
+            <select
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value)}
+              className="bg-white text-slate-800 font-bold rounded-lg px-2.5 py-1 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
+            >
+              <option value="all">Semua Status</option>
+              <option value="menunggu">Menunggu Ditangani</option>
+              <option value="diproses">Sedang Dikerjakan</option>
+              <option value="selesai">Selesai Diperbaiki</option>
+            </select>
+          </div>
 
           <button
             onClick={() => setIsNewTicketModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Buat Laporan Keluhan</span>
+            <span>+ Buat Tiket Keluhan</span>
           </button>
         </div>
       </div>
@@ -124,6 +159,12 @@ export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ 
             const isResolved = ticket.status === 'selesai';
             const isProcessing = ticket.status === 'diproses';
             const isWaiting = ticket.status === 'menunggu';
+            const ticketBranch = branches.find(b => b.id === ticket.branchId) ||
+              (allRooms && (() => {
+                const r = allRooms.find(rm => rm.id === ticket.roomId);
+                return r?.branchId ? branches.find(b => b.id === r.branchId) : null;
+              })()) ||
+              branches[0];
 
             return (
               <div
@@ -135,6 +176,10 @@ export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ 
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs text-slate-600 font-bold bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                       {ticket.ticketNumber}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[11px] shadow-2xs">
+                      <Building2 className="w-3 h-3 text-teal-600 shrink-0" />
+                      <span className="truncate max-w-[160px]">{ticketBranch?.name || 'Cabang Properti'}</span>
                     </span>
                     <span className="font-bold text-slate-900 text-sm">
                       {ticket.roomNumber} ({ticket.tenantName})
@@ -162,12 +207,17 @@ export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ 
                     {ticket.description}
                   </p>
 
-                  <div className="text-[11px] text-slate-500 flex items-center gap-3 pt-1">
+                  <div className="text-[11px] text-slate-500 flex items-center gap-3 pt-1 flex-wrap">
                     <span>Dilaporkan: {ticket.createdAt}</span>
+                    <span>&bull;</span>
+                    <span>Cabang: <strong className="text-slate-700 font-semibold">{ticketBranch?.name}</strong></span>
                     {ticket.cost && ticket.cost > 0 && (
-                      <span className="text-rose-600 font-semibold">
-                        Biaya Perbaikan: Rp {ticket.cost.toLocaleString('id-ID')}
-                      </span>
+                      <>
+                        <span>&bull;</span>
+                        <span className="text-rose-600 font-semibold">
+                          Biaya Perbaikan: Rp {ticket.cost.toLocaleString('id-ID')}
+                        </span>
+                      </>
                     )}
                   </div>
 
@@ -240,22 +290,37 @@ export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ 
               </button>
             </div>
 
-            <form onSubmit={handleCreateTicketSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleCreateTicketSubmit} className="space-y-4 text-xs" autoComplete="off">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Nomor Kamar *</label>
-                  <select
-                    value={ticketRoomId}
-                    onChange={e => setTicketRoomId(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
-                  >
-                    {rooms.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.roomNumber} ({r.tenant?.name || 'Kosong'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {isTenant ? (
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Kamar & Cabang Anda</label>
+                    <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold flex items-center justify-between shadow-2xs">
+                      <span className="flex items-center gap-1.5 text-blue-700 font-extrabold">
+                        <Building className="w-3.5 h-3.5" />
+                        <span>{assignedRoom?.roomNumber || `Kamar 0${assignedRoomId}`}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-medium bg-white px-2 py-0.5 rounded border border-slate-200 truncate max-w-[120px]">
+                        {assignedBranch?.name || 'Cabang'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Nomor Kamar *</label>
+                    <select
+                      value={ticketRoomId}
+                      onChange={e => setTicketRoomId(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-2xs"
+                    >
+                      {rooms.map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.roomNumber} ({r.tenant?.name || 'Kosong'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-slate-700 font-semibold mb-1">Kategori Keluhan *</label>
@@ -275,10 +340,17 @@ export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ 
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Judul Keluhan Singkat *</label>
+                <label htmlFor="ticket-title-input" className="block text-slate-700 font-semibold mb-1">Judul Keluhan Singkat *</label>
                 <input
+                  id="ticket-title-input"
+                  name="ticket_issue_title"
                   type="text"
                   required
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-form-type="other"
                   value={ticketTitle}
                   onChange={e => setTicketTitle(e.target.value)}
                   placeholder="Contoh: AC kurang dingin / Kran wastafel bocor"
@@ -287,10 +359,17 @@ export const MaintenanceTicketsView: React.FC<MaintenanceTicketsViewProps> = ({ 
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Deskripsi Lengkap Masalah *</label>
+                <label htmlFor="ticket-desc-input" className="block text-slate-700 font-semibold mb-1">Deskripsi Lengkap Masalah *</label>
                 <textarea
+                  id="ticket-desc-input"
+                  name="ticket_issue_description"
                   required
                   rows={3}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-form-type="other"
                   value={ticketDescription}
                   onChange={e => setTicketDescription(e.target.value)}
                   placeholder="Jelaskan detail kendala yang dialami agar teknisi membawa perlengkapan yang tepat..."

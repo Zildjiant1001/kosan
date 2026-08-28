@@ -161,8 +161,15 @@ export const BookingInquiryModal: React.FC<BookingInquiryModalProps> = ({
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
+                    id="booking-inquiry-fullname"
+                    name="booking_inquiry_fullname"
                     type="text"
                     required
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-lpignore="true"
+                    data-form-type="other"
                     placeholder="Contoh: Rian Anggara"
                     value={name}
                     onChange={(e) => setName(e.target.value)}

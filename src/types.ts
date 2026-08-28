@@ -1,10 +1,75 @@
-export type UserRole = 'pemilik' | 'penghuni';
+export type UserRole = 'superadmin' | 'pemilik' | 'penghuni';
+
+export type AccountStatus = 'active' | 'pending_approval' | 'suspended' | 'rejected';
+
+export interface AppUser {
+  id: string;
+  email: string;
+  name: string;
+  phone: string;
+  role: UserRole;
+  status: AccountStatus;
+  assignedRoomId?: number;
+  kostBranch?: string;
+  password?: string;
+  createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  avatarUrl?: string;
+  notes?: string;
+  rejectionReason?: string;
+  lastLoginAt?: string;
+}
+
+export type AuditActionType =
+  | 'login'
+  | 'logout'
+  | 'approve_user'
+  | 'reject_user'
+  | 'update_role'
+  | 'update_status'
+  | 'create_user'
+  | 'delete_user'
+  | 'create_branch'
+  | 'delete_branch'
+  | 'system_sync'
+  | 'security_alert';
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  actorName: string;
+  actorEmail: string;
+  actorRole: UserRole;
+  action: AuditActionType;
+  title: string;
+  description: string;
+  targetUser?: string;
+  ipAddress?: string;
+  device?: string;
+  status: 'success' | 'warning' | 'danger';
+}
+
+export interface EnterpriseBranch {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  city: string;
+  totalRooms: number;
+  occupiedRooms: number;
+  managerName: string;
+  managerPhone: string;
+  monthlyRevenue: number;
+  status: 'active' | 'maintenance';
+}
 
 export type RoomStatus = 'terisi' | 'kosong' | 'perbaikan' | 'menunggu_pembayaran';
 
 export interface Tenant {
   id: string;
   roomId: number;
+  branchId?: string;
   name: string;
   phone: string;
   email?: string;
@@ -25,6 +90,7 @@ export interface Tenant {
 
 export interface Room {
   id: number; // 1 to 8
+  branchId?: string;
   roomNumber: string; // "Kamar 01" to "Kamar 08"
   floor: number; // 1 or 2
   type: 'Deluxe AC' | 'Superior AC' | 'Standard Fan';
@@ -48,6 +114,7 @@ export interface AdditionalFee {
 
 export interface Invoice {
   id: string;
+  branchId?: string;
   invoiceNumber: string; // INV-202608-K01
   roomId: number;
   roomNumber: string;
@@ -80,6 +147,7 @@ export type ExpenseCategory =
 
 export interface Expense {
   id: string;
+  branchId?: string;
   date: string; // YYYY-MM-DD
   month: string; // YYYY-MM
   category: ExpenseCategory;
@@ -87,6 +155,8 @@ export interface Expense {
   amount: number;
   notes?: string;
   paidTo?: string;
+  recordedBy?: string;
+  proofImageUrl?: string;
 }
 
 export type TicketCategory = 'ac' | 'plumbing' | 'kelistrikan' | 'kebersihan' | 'kunci_pintu' | 'fasilitas_kamar' | 'lainnya';
@@ -95,6 +165,7 @@ export type TicketStatus = 'menunggu' | 'diproses' | 'selesai';
 
 export interface MaintenanceTicket {
   id: string;
+  branchId?: string;
   ticketNumber: string;
   roomId: number;
   roomNumber: string;
@@ -120,6 +191,7 @@ export type BookingStatus = 'pending' | 'survey_dijadwalkan' | 'disetujui' | 'di
 
 export interface RentalBooking {
   id: string;
+  branchId?: string;
   roomId: number;
   roomNumber: string;
   roomType: string;
@@ -140,6 +212,50 @@ export interface BankAccount {
   accountHolder: string;
 }
 
+export interface LandingPageFeature {
+  title: string;
+  subtitle: string;
+}
+
+export interface LandingNearbyPlace {
+  title: string;
+  time: string;
+  desc: string;
+}
+
+export interface LandingFaq {
+  q: string;
+  a: string;
+}
+
+export interface LandingTestimonial {
+  name: string;
+  role: string;
+  room: string;
+  rating: number;
+  comment: string;
+  avatar: string;
+}
+
+export interface LandingPageContent {
+  brandName?: string;
+  brandTagline?: string;
+  heroBadge?: string;
+  heroHeadline?: string;
+  heroHighlightText?: string;
+  heroHeadlineEnd?: string;
+  heroDescription?: string;
+  heroStartingPrice?: string;
+  heroRatingText?: string;
+  heroImageUrl?: string;
+  marqueeItems?: string[];
+  features?: LandingPageFeature[];
+  nearbyPlaces?: LandingNearbyPlace[];
+  testimonials?: LandingTestimonial[];
+  faqs?: LandingFaq[];
+  customWhatsappMessage?: string;
+}
+
 export interface KostSettings {
   kostName: string;
   tagline: string;
@@ -156,4 +272,5 @@ export interface KostSettings {
   rules: string[];
   paymentDueDay: number; // e.g. 5 (date 5 every month)
   lateFeePerDay: number;
+  landingPageContent?: LandingPageContent;
 }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useKost } from '../context/KostContext';
 import { Room, Tenant, RoomStatus } from '../types';
 import { formatRupiah, formatIndonesianDate } from '../utils/formatters';
 import {
@@ -17,6 +18,7 @@ import {
   Sparkles,
   ShieldAlert,
   Zap,
+  Building2,
 } from 'lucide-react';
 
 interface RoomDetailModalProps {
@@ -36,6 +38,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
   onCheckIn,
   onCheckOut,
 }) => {
+  const { branches } = useKost();
   const [activeTab, setActiveTab] = useState<'info' | 'checkin' | 'edit'>('info');
 
   // Check-In Form State
@@ -69,7 +72,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
     setFormError('');
 
     const newTenant: Tenant = {
-      id: `t-${Date.now()}`,
+      id: `t-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       roomId: room.id,
       name: tenantName,
       phone: tenantPhone,
@@ -114,7 +117,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
               <DoorClosed className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-extrabold text-lg text-slate-900 font-heading">
                   {room.roomNumber}
                 </h3>
@@ -123,6 +126,10 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
                 </span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
                   {room.type}
+                </span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 font-semibold border border-teal-200 flex items-center gap-1">
+                  <Building2 className="w-3 h-3 text-teal-600" />
+                  <span>{branches.find(b => b.id === room.branchId)?.name || 'Kost Griya Harmoni 8'}</span>
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -209,17 +216,14 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
               <div className="bg-slate-50 rounded-2xl p-4 sm:p-5 border border-slate-200 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                   <div className="flex items-center gap-3">
-                    {room.tenant.avatarUrl ? (
-                      <img
-                        src={room.tenant.avatarUrl}
-                        alt={room.tenant.name}
-                        className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg">
-                        {room.tenant.name[0]}
-                      </div>
-                    )}
+                    <img
+                      src={
+                        room.tenant.avatarUrl ||
+                        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
+                      }
+                      alt={room.tenant.name}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-emerald-500 shadow-sm shrink-0"
+                    />
                     <div>
                       <h4 className="font-extrabold text-sm sm:text-base text-slate-900 font-heading">
                         {room.tenant.name}
@@ -348,8 +352,15 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
                   Nama Lengkap Penyewa *
                 </label>
                 <input
+                  id="room-detail-tenant-name"
+                  name="room_detail_tenant_name"
                   type="text"
                   required
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-form-type="other"
                   value={tenantName}
                   onChange={e => setTenantName(e.target.value)}
                   placeholder="Contoh: Dimas Aditya, S.T."

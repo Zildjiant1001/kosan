@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useKost } from '../context/KostContext';
 import { Invoice } from '../types';
+import { MonthPickerPopover } from './MonthPickerPopover';
 import {
   formatRupiah,
   formatIndonesianDate,
@@ -19,6 +20,8 @@ import {
   Filter,
   Search,
   Building,
+  Building2,
+  Calendar,
   QrCode,
   AlertTriangle,
 } from 'lucide-react';
@@ -41,11 +44,15 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
     addInvoice,
     rooms,
     settings,
+    branches,
+    selectedBranchId,
   } = useKost();
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'menunggu_verifikasi' | 'belum_bayar' | 'lunas'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProofImage, setSelectedProofImage] = useState<string | null>(null);
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // New Invoice Modal state
   const [isAddInvoiceOpen, setIsAddInvoiceOpen] = useState(false);
@@ -84,7 +91,7 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
       tenantPhone: room.tenant?.phone,
       month: newInvMonth,
       baseAmount: room.basePrice,
-      additionalFees: newInvExtraAmount > 0 ? [{ id: `f-${Date.now()}`, name: newInvExtraName, amount: Number(newInvExtraAmount) }] : [],
+      additionalFees: newInvExtraAmount > 0 ? [{ id: `f-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, name: newInvExtraName, amount: Number(newInvExtraAmount) }] : [],
       totalAmount: room.basePrice + (Number(newInvExtraAmount) || 0),
       dueDate: `${newInvMonth}-05`,
       status: 'belum_bayar',
@@ -95,44 +102,44 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
   };
 
   return (
-    <div id="payment-management-view" className="space-y-5">
-      {/* Top Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <CreditCard className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 font-heading">
-                Verifikasi Pembayaran QRIS & Tagihan Sewa
-              </h2>
-              <p className="text-xs text-slate-500">
-                Persetujuan bukti transfer, pembuatan QRIS dinamis, dan pengingat WhatsApp
-              </p>
-            </div>
+    <div id="payment-management-view" className="space-y-6 animate-in fade-in duration-200">
+      {/* Top Standardized Header */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>Verifikasi Finansial & Tagihan</span>
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-bold border border-teal-200 flex items-center gap-1 shadow-2xs">
+              <Building2 className="w-3 h-3" />
+              <span>{selectedBranchId === 'all' ? `Semua Cabang (${branches.length})` : (branches.find(b => b.id === selectedBranchId)?.name || 'Cabang')}</span>
+            </span>
+            <span className="text-xs text-slate-500 font-medium">
+              Periode: <strong className="text-slate-800">{formatIndonesianMonthYear(activeReportMonth)}</strong>
+            </span>
           </div>
+
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 font-heading tracking-tight">
+            Verifikasi Pembayaran QRIS & Tagihan Sewa
+          </h1>
+          <p className="text-xs text-slate-500">
+            Persetujuan bukti transfer penyewa, penerbitan QRIS dinamis otomatis, dan pengiriman invoice tagihan.
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs shadow-2xs">
-            <span className="text-slate-600 font-medium">Bulan:</span>
-            <select
-              value={activeReportMonth}
-              onChange={e => setActiveReportMonth(e.target.value)}
-              className="bg-white text-emerald-700 font-bold rounded-lg px-2 py-0.5 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs"
-            >
-              {availableMonths.map(m => (
-                <option key={m} value={m}>
-                  {formatIndonesianMonthYear(m)}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <MonthPickerPopover
+            id="payment-month-picker"
+            value={activeReportMonth}
+            onChange={setActiveReportMonth}
+            label="Bulan:"
+            align="right"
+          />
 
           <button
             onClick={() => setIsAddInvoiceOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>+ Buat Tagihan Baru</span>
@@ -262,7 +269,17 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
                     </div>
 
                     <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                      <span>Jatuh Tempo: <strong className="text-slate-700">{formatIndonesianDate(inv.dueDate)}</strong></span>
+                      <span>
+                        Terakhir Bayar:{' '}
+                        <strong className={todayStr > inv.dueDate && isUnpaid ? 'text-rose-600 font-bold' : 'text-slate-700'}>
+                          {formatIndonesianDate(inv.dueDate)}
+                        </strong>
+                        {todayStr > inv.dueDate && isUnpaid && (
+                          <span className="ml-1.5 text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">
+                            TERLAMBAT
+                          </span>
+                        )}
+                      </span>
                       {inv.paidDate && (
                         <span>Dibayar: <strong className="text-emerald-700">{formatIndonesianDate(inv.paidDate)}</strong></span>
                       )}
@@ -359,7 +376,7 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                            className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
                           >
                             <Send className="w-3.5 h-3.5" />
                             <span>Kirim Tagihan WA</span>

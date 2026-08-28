@@ -16,7 +16,7 @@ import { TenantPortal } from './components/TenantPortal';
 import { KostSettingsModal } from './components/KostSettingsModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { LandingPage } from './components/LandingPage';
-import { Room, Invoice, Tenant } from './types';
+import { Room, Invoice, Tenant, UserRole } from './types';
 import { formatRupiah } from './utils/formatters';
 import {
   Building2,
@@ -59,7 +59,7 @@ const MainKostApp: React.FC = () => {
   const [activeInvoiceForReceipt, setActiveInvoiceForReceipt] = useState<Invoice | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isGoogleAuthOpen, setIsGoogleAuthOpen] = useState<boolean>(false);
-  const [authDefaultRole, setAuthDefaultRole] = useState<'pemilik' | 'penghuni'>('pemilik');
+  const [authDefaultRole, setAuthDefaultRole] = useState<UserRole>('pemilik');
 
   const summary = getMonthlySummary(activeReportMonth);
 
