@@ -48,9 +48,25 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
     selectedBranchId,
   } = useKost();
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'menunggu_verifikasi' | 'belum_bayar' | 'lunas'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'menunggu_verifikasi' | 'belum_bayar' | 'lunas' | 'ditolak'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProofImage, setSelectedProofImage] = useState<string | null>(null);
+
+  // Rejection Modal State
+  const [rejectModalInvoice, setRejectModalInvoice] = useState<Invoice | null>(null);
+  const [selectedReasonPreset, setSelectedReasonPreset] = useState<string>(
+    'Bukti transfer buram, terpotong, atau tidak terbaca dengan jelas'
+  );
+  const [customReasonText, setCustomReasonText] = useState<string>('');
+
+  const PRESET_REJECTION_REASONS = [
+    'Bukti transfer buram, terpotong, atau tidak terbaca dengan jelas',
+    'Nominal transfer tidak sesuai dengan total tagihan sewa',
+    'Nomor rekening tujuan salah / bukan rekening resmi kos',
+    'Mutasi / dana belum masuk ke rekening bank atau QRIS pengelola',
+    'Bukti transfer terindikasi kadaluarsa atau duplikat',
+    'Lainnya (Tulis alasan khusus)',
+  ];
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -63,7 +79,11 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
 
   const filteredInvoices = invoices.filter(inv => {
     if (inv.month !== activeReportMonth) return false;
-    if (activeFilter !== 'all' && inv.status !== activeFilter) return false;
+    if (activeFilter === 'ditolak') {
+      if (inv.status !== 'ditolak' && inv.status !== 'verifikasi_ditolak') return false;
+    } else if (activeFilter !== 'all' && inv.status !== activeFilter) {
+      return false;
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (
@@ -78,6 +98,29 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
   const pendingCount = invoices.filter(
     i => i.month === activeReportMonth && i.status === 'menunggu_verifikasi'
   ).length;
+
+  const rejectedCount = invoices.filter(
+    i => i.month === activeReportMonth && (i.status === 'ditolak' || i.status === 'verifikasi_ditolak')
+  ).length;
+
+  const handleConfirmRejection = () => {
+    if (!rejectModalInvoice) return;
+    const finalReason =
+      selectedReasonPreset === 'Lainnya (Tulis alasan khusus)'
+        ? customReasonText.trim() || 'Bukti transfer tidak sesuai/valid'
+        : selectedReasonPreset + (customReasonText.trim() ? ` - ${customReasonText.trim()}` : '');
+
+    verifyPayment(
+      rejectModalInvoice.id,
+      'ditolak',
+      `Penolakan: ${finalReason}`,
+      finalReason
+    );
+
+    setRejectModalInvoice(null);
+    setCustomReasonText('');
+    setSelectedReasonPreset('Bukti transfer buram, terpotong, atau tidak terbaca dengan jelas');
+  };
 
   const handleCreateNewInvoice = (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,11 +220,27 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
             )}
           </button>
           <button
+            onClick={() => setActiveFilter('ditolak')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              activeFilter === 'ditolak'
+                ? 'bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs font-bold'
+                : 'text-rose-700 hover:bg-rose-50/60'
+            }`}
+          >
+            <XCircle className="w-3.5 h-3.5 text-rose-600" />
+            <span>Ditolak</span>
+            {rejectedCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] flex items-center justify-center font-black">
+                {rejectedCount}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setActiveFilter('belum_bayar')}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition whitespace-nowrap cursor-pointer ${
               activeFilter === 'belum_bayar'
-                ? 'bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs font-bold'
-                : 'text-rose-600 hover:bg-rose-50/50'
+                ? 'bg-slate-800 text-white border border-slate-700 shadow-2xs font-bold'
+                : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
             Belum Bayar
@@ -217,13 +276,18 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
           filteredInvoices.map(inv => {
             const isPaid = inv.status === 'lunas';
             const isPending = inv.status === 'menunggu_verifikasi';
+            const isRejected = inv.status === 'ditolak' || inv.status === 'verifikasi_ditolak';
             const isUnpaid = inv.status === 'belum_bayar';
 
             return (
               <div
                 key={inv.id}
                 id={`invoice-item-${inv.id}`}
-                className="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl p-4 sm:p-5 shadow-xs transition flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className={`bg-white border rounded-2xl p-4 sm:p-5 shadow-xs transition flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                  isRejected
+                    ? 'border-rose-300 bg-rose-50/20'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
               >
                 {/* Left Side: Room, Tenant, Invoice ID */}
                 <div className="flex items-start gap-3.5">
@@ -233,13 +297,15 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         : isPending
                         ? 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        : isRejected
+                        ? 'bg-rose-100 text-rose-700 border border-rose-300'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200'
                     }`}
                   >
                     <Building className="w-6 h-6" />
                   </div>
 
-                  <div>
+                  <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-extrabold text-base text-slate-900 font-heading">
                         {inv.roomNumber}
@@ -257,39 +323,63 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
                           MENUNGGU VERIFIKASI
                         </span>
                       )}
+                      {isRejected && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-extrabold text-[10px] border border-rose-300 flex items-center gap-1">
+                          <XCircle className="w-3 h-3 text-rose-600" />
+                          VERIFIKASI DITOLAK
+                        </span>
+                      )}
                       {isUnpaid && (
-                        <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold text-[10px] border border-rose-200">
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] border border-slate-200">
                           BELUM BAYAR
                         </span>
                       )}
                     </div>
 
-                    <div className="text-xs text-slate-700 font-medium mt-1">
+                    <div className="text-xs text-slate-700 font-medium">
                       {inv.tenantName} {inv.tenantPhone && <span className="text-slate-400">&bull; {inv.tenantPhone}</span>}
                     </div>
 
-                    <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                    <div className="text-[11px] text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
                       <span>
-                        Terakhir Bayar:{' '}
-                        <strong className={todayStr > inv.dueDate && isUnpaid ? 'text-rose-600 font-bold' : 'text-slate-700'}>
+                        Batas Bayar:{' '}
+                        <strong className={todayStr > inv.dueDate && !isPaid ? 'text-rose-600 font-bold' : 'text-slate-700'}>
                           {formatIndonesianDate(inv.dueDate)}
                         </strong>
-                        {todayStr > inv.dueDate && isUnpaid && (
+                        {todayStr > inv.dueDate && !isPaid && (
                           <span className="ml-1.5 text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">
                             TERLAMBAT
                           </span>
                         )}
                       </span>
                       {inv.paidDate && (
-                        <span>Dibayar: <strong className="text-emerald-700">{formatIndonesianDate(inv.paidDate)}</strong></span>
+                        <span>Diajukan: <strong className="text-slate-700">{formatIndonesianDate(inv.paidDate)}</strong></span>
                       )}
                       {inv.paymentMethod && (
                         <span>Metode: <strong className="text-slate-700 uppercase">{inv.paymentMethod}</strong></span>
                       )}
                     </div>
 
-                    {inv.notes && (
-                      <p className="text-[11px] text-slate-600 italic mt-1 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                    {/* Rejection Alert Box if Rejected */}
+                    {isRejected && (
+                      <div className="mt-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1 max-w-xl">
+                        <div className="flex items-center gap-1.5 font-bold text-rose-800 text-[11px]">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span>Alasan Penolakan:</span>
+                        </div>
+                        <p className="text-[11px] text-rose-900 font-medium pl-5 bg-white/80 p-1.5 rounded border border-rose-200/80">
+                          "{inv.rejectionReason || inv.notes || 'Bukti transfer tidak sesuai'}"
+                        </p>
+                        {inv.rejectedAt && (
+                          <span className="text-[10px] text-rose-600 pl-5 block">
+                            Ditolak pada: {formatIndonesianDate(inv.rejectedAt.split(' ')[0])} {inv.rejectedAt.split(' ')[1] || ''} oleh {inv.rejectedBy || 'Pemilik'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {inv.notes && !isRejected && (
+                      <p className="text-[11px] text-slate-600 italic bg-slate-50 px-2 py-0.5 rounded border border-slate-200 max-w-xl">
                         {inv.notes}
                       </p>
                     )}
@@ -325,7 +415,7 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* If Pending Verification: Show Approve / Reject */}
+                    {/* If Pending Verification: Show Approve / Reject Modal Trigger */}
                     {isPending && (
                       <>
                         <button
@@ -338,15 +428,50 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
 
                         <button
                           onClick={() => {
-                            const reason = prompt('Alasan penolakan pembayaran:', 'Bukti transfer tidak valid/nominal tidak sesuai');
-                            if (reason) {
-                              verifyPayment(inv.id, 'ditolak', reason);
-                            }
+                            setRejectModalInvoice(inv);
+                            setSelectedReasonPreset('Bukti transfer buram, terpotong, atau tidak terbaca dengan jelas');
+                            setCustomReasonText('');
                           }}
-                          className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition cursor-pointer"
+                          className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 flex items-center gap-1.5 transition cursor-pointer"
                         >
-                          <XCircle className="w-4 h-4" />
-                          <span>Tolak</span>
+                          <XCircle className="w-4 h-4 text-rose-600" />
+                          <span>Tolak Verifikasi</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* If Rejected: Show QRIS button, WA Reminder, & Re-verify button */}
+                    {isRejected && (
+                      <>
+                        <button
+                          onClick={() => onOpenQRIS(inv)}
+                          className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-emerald-700 hover:text-emerald-800 border border-slate-200 shadow-2xs text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <QrCode className="w-4 h-4" />
+                          <span>Buka QRIS</span>
+                        </button>
+
+                        {inv.tenantPhone && (
+                          <a
+                            href={`https://wa.me/${inv.tenantPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                              `Halo Sdr/i ${inv.tenantName} (${inv.roomNumber}), bukti pembayaran sewa periode ${inv.month} sebesar ${formatRupiah(inv.totalAmount)} belum dapat kami verifikasi karena: "${inv.rejectionReason || 'Bukti transfer tidak sesuai'}". Mohon periksa kembali dan lakukan pembayaran/unggah bukti ulang di portal penghuni. Terima kasih!`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Kirim Info WA</span>
+                          </a>
+                        )}
+
+                        <button
+                          onClick={() => verifyPayment(inv.id, 'lunas', 'Disetujui manual oleh pemilik setelah pengecekan ulang.')}
+                          className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                          title="Ubah menjadi Lunas jika dana sudah masuk"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Ubah Lunas</span>
                         </button>
                       </>
                     )}
@@ -512,6 +637,152 @@ export const PaymentManagementView: React.FC<PaymentManagementViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Reason Modal */}
+      {rejectModalInvoice && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={e => {
+            if (e.target === e.currentTarget) setRejectModalInvoice(null);
+          }}
+        >
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-start pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200">
+                  <XCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 font-heading">
+                    Tolak Verifikasi Pembayaran
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Pilih alasan penolakan untuk penghuni {rejectModalInvoice.roomNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRejectModalInvoice(null)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Target Invoice Info Summary */}
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-slate-500 block text-[11px]">Tagihan Penyewa:</span>
+                <span className="font-bold text-slate-900">
+                  {rejectModalInvoice.tenantName} ({rejectModalInvoice.roomNumber})
+                </span>
+                <span className="text-[11px] font-mono text-slate-500 block">
+                  {rejectModalInvoice.invoiceNumber}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-500 block text-[11px]">Total Tagihan:</span>
+                <span className="font-extrabold text-emerald-700 font-mono text-sm">
+                  {formatRupiah(rejectModalInvoice.totalAmount)}
+                </span>
+              </div>
+            </div>
+
+            {/* Proof Thumbnail if exists */}
+            {rejectModalInvoice.proofImageUrl && (
+              <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-200">
+                <img
+                  src={rejectModalInvoice.proofImageUrl}
+                  alt="Bukti"
+                  className="w-12 h-12 object-cover rounded-xl border border-slate-200 shrink-0"
+                />
+                <div className="text-xs text-slate-600">
+                  <span className="font-semibold text-slate-800 block">Bukti Transfer Penyewa</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProofImage(rejectModalInvoice.proofImageUrl || null)}
+                    className="text-emerald-700 hover:text-emerald-800 underline text-[11px] font-bold cursor-pointer"
+                  >
+                    Buka Ukuran Penuh
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Predefined Rejection Reasons */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-800">
+                Pilih Alasan Penolakan:
+              </label>
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                {PRESET_REJECTION_REASONS.map((reason, idx) => {
+                  const isSelected = selectedReasonPreset === reason;
+                  return (
+                    <label
+                      key={idx}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-rose-50 border-rose-300 text-rose-950 font-medium'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="rejectionPreset"
+                        checked={isSelected}
+                        onChange={() => setSelectedReasonPreset(reason)}
+                        className="mt-0.5 text-rose-600 focus:ring-rose-500"
+                      />
+                      <span>{reason}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Custom Notes / Specific Detail */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-800">
+                Catatan Tambahan untuk Penghuni (Opsional):
+              </label>
+              <textarea
+                value={customReasonText}
+                onChange={e => setCustomReasonText(e.target.value)}
+                placeholder="Contoh: Tolong kirim bukti transfer dengan nominal pas Rp 1.775.000 atau transfer ulang ke rekening BCA..."
+                rows={2}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-2xs"
+              />
+            </div>
+
+            {/* Alert note */}
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                Status tagihan akan berubah menjadi <strong>"Verifikasi Ditolak"</strong>. Penghuni akan melihat alasan penolakan ini di portal mereka dan QR code pembayaran akan dimunculkan kembali untuk pembayaran ulang.
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-2 border-t border-slate-100 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setRejectModalInvoice(null)}
+                className="px-4 py-2.5 rounded-xl text-slate-600 hover:text-slate-900 text-xs font-semibold cursor-pointer"
+              >
+                Batalkan
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRejection}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>Konfirmasi Tolak Verifikasi</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

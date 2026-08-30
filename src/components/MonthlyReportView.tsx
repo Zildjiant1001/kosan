@@ -48,6 +48,11 @@ import {
   ArrowUpRight,
   ChevronRight,
   Filter,
+  Eye,
+  Copy,
+  X,
+  FileCode,
+  Table,
 } from 'lucide-react';
 
 interface MonthlyReportViewProps {
@@ -81,6 +86,9 @@ export const MonthlyReportView: React.FC<MonthlyReportViewProps> = ({
   // Branch filter directly uses global synchronized selectedBranchId
   const reportBranchId = selectedBranchId;
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'summary' | 'rooms' | 'expenses' | 'raw_csv'>('summary');
+  const [copiedCsv, setCopiedCsv] = useState(false);
 
   const isAllBranches = reportBranchId === 'all';
   const selectedBranchObj = !isAllBranches ? branches.find(b => b.id === reportBranchId) : null;
@@ -383,13 +391,12 @@ export const MonthlyReportView: React.FC<MonthlyReportViewProps> = ({
     XLSX.writeFile(wb, fileName);
   };
 
-  // 2. Export to CSV
-  const handleExportCSV = () => {
+  const generateCsvRows = () => {
     const scopeLabel = isAllBranches 
       ? `SEMUA CABANG (${branches.length} Cabang Terintegrasi)`
       : (selectedBranchObj ? `${selectedBranchObj.name} (${selectedBranchObj.code})` : 'Cabang Utama');
 
-    const rows = [
+    const rows: string[][] = [
       [`LAPORAN KEUANGAN BULANAN KOST - ${scopeLabel.toUpperCase()}`],
       ['Cakupan Laporan:', scopeLabel],
       ['Periode:', formatIndonesianMonthYear(activeReportMonth)],
@@ -459,6 +466,25 @@ export const MonthlyReportView: React.FC<MonthlyReportViewProps> = ({
       })
     );
 
+    return rows;
+  };
+
+  const getCsvRawText = () => {
+    const rows = generateCsvRows();
+    return rows.map(e => e.join(',')).join('\n');
+  };
+
+  const handleCopyCsv = () => {
+    const text = getCsvRawText();
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedCsv(true);
+      setTimeout(() => setCopiedCsv(false), 2500);
+    });
+  };
+
+  // 2. Export to CSV
+  const handleExportCSV = () => {
+    const rows = generateCsvRows();
     const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(e => e.join(',')).join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -550,15 +576,15 @@ export const MonthlyReportView: React.FC<MonthlyReportViewProps> = ({
               <span>Unduh Format XLS</span>
             </button>
 
-            {/* Export CSV Button */}
+            {/* Preview Button (formerly Ekspor CSV) */}
             <button
-              id="btn-export-csv"
-              onClick={handleExportCSV}
+              id="btn-preview-report"
+              onClick={() => setIsPreviewModalOpen(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 font-semibold shadow-2xs transition cursor-pointer"
-              title="Download Data CSV"
+              title="Pratinjau / Preview Data Laporan"
             >
-              <Download className="w-3.5 h-3.5 text-blue-600" />
-              <span>Ekspor CSV</span>
+              <Eye className="w-3.5 h-3.5 text-blue-600" />
+              <span>Preview</span>
             </button>
 
             {/* Print PDF Button */}
@@ -1520,6 +1546,362 @@ export const MonthlyReportView: React.FC<MonthlyReportViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* PREVIEW MODAL (Pratinjau Data Laporan & Format CSV)                       */}
+      {/* ========================================================================= */}
+      {isPreviewModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-5 sm:px-6 py-4 flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-md bg-blue-500/30 text-blue-200 text-[10px] font-bold uppercase tracking-wider">
+                      Pratinjau Laporan
+                    </span>
+                    <span className="text-xs text-slate-400 font-medium">
+                      Periode: {formatIndonesianMonthYear(activeReportMonth)}
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base sm:text-lg font-heading text-white mt-0.5">
+                    {isAllBranches ? 'Laporan Keuangan Konsolidasi (Semua Cabang)' : `Laporan Keuangan – ${selectedBranchObj?.name || 'Cabang'}`}
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsPreviewModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                title="Tutup Pratinjau"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Tab Switcher */}
+            <div className="bg-slate-100/90 px-5 py-2.5 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => setPreviewTab('summary')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  previewTab === 'summary'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Ringkasan Eksekutif</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewTab('rooms')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  previewTab === 'rooms'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Table className="w-3.5 h-3.5 text-blue-600" />
+                <span>Pemasukan Kamar ({currentRooms.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewTab('expenses')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  previewTab === 'expenses'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
+                <span>Pengeluaran ({currentExpenses.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewTab('raw_csv')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  previewTab === 'raw_csv'
+                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileCode className="w-3.5 h-3.5 text-purple-600" />
+                <span>Format Raw CSV</span>
+              </button>
+            </div>
+
+            {/* Modal Body Content (Scrollable) */}
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 text-xs space-y-4">
+              {/* TAB 1: SUMMARY */}
+              {previewTab === 'summary' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <div className="bg-emerald-50/70 border border-emerald-200 p-3.5 rounded-xl space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-emerald-800 block">Total Pemasukan</span>
+                      <span className="text-base sm:text-lg font-black text-emerald-700 font-mono">
+                        {formatRupiah(summary.totalIncome)}
+                      </span>
+                    </div>
+
+                    <div className="bg-rose-50/70 border border-rose-200 p-3.5 rounded-xl space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-rose-800 block">Total Pengeluaran</span>
+                      <span className="text-base sm:text-lg font-black text-rose-700 font-mono">
+                        {formatRupiah(summary.totalExpense)}
+                      </span>
+                    </div>
+
+                    <div className="bg-blue-50/70 border border-blue-200 p-3.5 rounded-xl space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-blue-800 block">Laba Bersih</span>
+                      <span className="text-base sm:text-lg font-black text-blue-700 font-mono">
+                        {formatRupiah(summary.netProfit)}
+                      </span>
+                    </div>
+
+                    <div className="bg-teal-50/70 border border-teal-200 p-3.5 rounded-xl space-y-1">
+                      <span className="text-[10px] font-bold uppercase text-teal-800 block">Tingkat Okupansi</span>
+                      <span className="text-base sm:text-lg font-black text-teal-700 font-heading">
+                        {summary.occupancyRate}% <span className="text-xs font-normal text-slate-500">({summary.occupancyCount}/{summary.totalRooms})</span>
+                      </span>
+                    </div>
+
+                    <div className="bg-amber-50/70 border border-amber-200 p-3.5 rounded-xl space-y-1 col-span-2 sm:col-span-1">
+                      <span className="text-[10px] font-bold uppercase text-amber-800 block">Total Tunggakan</span>
+                      <span className="text-base sm:text-lg font-black text-amber-700 font-mono">
+                        {formatRupiah(summary.totalUnpaidAmount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {isAllBranches && summary.branchBreakdowns && summary.branchBreakdowns.length > 0 && (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                      <div className="bg-slate-50 px-4 py-2.5 font-bold text-slate-800 border-b border-slate-200 flex items-center justify-between">
+                        <span>Kontribusi Finansial Antar Cabang Properti</span>
+                        <span className="text-[11px] text-slate-500 font-normal">{summary.branchBreakdowns.length} Cabang</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100/70 text-slate-600 font-bold border-b border-slate-200 text-[11px]">
+                              <th className="py-2 px-3">Nama Cabang</th>
+                              <th className="py-2 px-3 text-center">Okupansi</th>
+                              <th className="py-2 px-3 text-right">Pemasukan</th>
+                              <th className="py-2 px-3 text-right">Pengeluaran</th>
+                              <th className="py-2 px-3 text-right">Laba Bersih</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-[11px]">
+                            {summary.branchBreakdowns.map(b => (
+                              <tr key={b.branchId} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 font-bold text-slate-800">
+                                  {b.branchName} ({b.city})
+                                </td>
+                                <td className="py-2 px-3 text-center">
+                                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold">
+                                    {b.occupancyRate}%
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-emerald-600">
+                                  {formatRupiah(b.totalIncome)}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-rose-600">
+                                  {formatRupiah(b.totalExpense)}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-black text-slate-900">
+                                  {formatRupiah(b.netProfit)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 2: ROOMS & INCOMES */}
+              {previewTab === 'rooms' && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                          <th className="py-2.5 px-3">No Kamar</th>
+                          <th className="py-2.5 px-3">Tipe</th>
+                          <th className="py-2.5 px-3">Nama Penghuni</th>
+                          <th className="py-2.5 px-3 text-center">Status Bayar</th>
+                          <th className="py-2.5 px-3">Metode</th>
+                          <th className="py-2.5 px-3 text-right">Sewa Pokok</th>
+                          <th className="py-2.5 px-3 text-right">Total Tagihan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {currentRooms.map(room => {
+                          const inv = currentInvoices.find(i => i.roomId === room.id);
+                          const isPaid = inv?.status === 'lunas';
+                          return (
+                            <tr key={room.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-3 font-extrabold text-slate-900 font-heading">
+                                {room.roomNumber}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600">{room.type}</td>
+                              <td className="py-2.5 px-3 font-medium text-slate-800">
+                                {room.tenant ? room.tenant.name : <span className="text-slate-400 italic">Kosong</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isPaid
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : room.status === 'kosong'
+                                    ? 'bg-slate-100 text-slate-500'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}>
+                                  {isPaid ? 'Lunas' : room.status === 'kosong' ? 'Kosong' : 'Belum Lunas'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 uppercase text-[10px] text-slate-600">
+                                {inv?.paymentMethod || '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                                {formatRupiah(room.basePrice)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                                {inv ? formatRupiah(inv.totalAmount) : '-'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: EXPENSES */}
+              {previewTab === 'expenses' && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  {currentExpenses.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-[11px]">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                            <th className="py-2.5 px-3">Tanggal</th>
+                            <th className="py-2.5 px-3">Kategori</th>
+                            <th className="py-2.5 px-3">Deskripsi Pengeluaran</th>
+                            <th className="py-2.5 px-3">Vendor / Penerima</th>
+                            <th className="py-2.5 px-3 text-right">Jumlah Biaya</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {currentExpenses.map(exp => (
+                            <tr key={exp.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-3 text-slate-600 font-mono">{exp.date}</td>
+                              <td className="py-2.5 px-3 font-semibold text-slate-800">{exp.category}</td>
+                              <td className="py-2.5 px-3 text-slate-700">{exp.title}</td>
+                              <td className="py-2.5 px-3 text-slate-600">{exp.paidTo || '-'}</td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
+                                {formatRupiah(exp.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-slate-400 italic">
+                      Tidak ada data pengeluaran tercatat untuk periode ini.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: RAW CSV */}
+              {previewTab === 'raw_csv' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-600">
+                      Format Teks CSV Standar (RFC 4180):
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyCsv}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition cursor-pointer flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>{copiedCsv ? '✓ Berhasil Disalin!' : 'Salin Semua Teks CSV'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-3.5 bg-slate-950 text-emerald-400 font-mono text-[10.5px] rounded-xl overflow-x-auto max-h-72 leading-relaxed selection:bg-emerald-800 selection:text-white border border-slate-800">
+                    {getCsvRawText()}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="bg-slate-50 px-5 sm:px-6 py-3.5 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 text-xs">
+              <span className="text-slate-500 text-[11px] hidden sm:inline">
+                Data laporan siap dicetak atau diekspor ke berbagai format.
+              </span>
+
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <button
+                  type="button"
+                  onClick={handleCopyCsv}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-200 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Copy className="w-3.5 h-3.5 text-slate-600" />
+                  <span>{copiedCsv ? '✓ Tersalin!' : 'Salin CSV'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold border border-blue-200 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Unduh CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Unduh XLS</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Cetak PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewModalOpen(false)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

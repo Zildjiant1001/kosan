@@ -61,6 +61,14 @@ export async function signInWithGoogle(): Promise<User | null> {
       throw new Error(
         `Domain aplikasi ini (${window.location.hostname}) belum didaftarkan di Firebase Console > Authentication > Settings > Authorized Domains.`
       );
+    } else if (error.code === 'auth/configuration-not-found') {
+      throw new Error(
+        `Firebase Authentication belum diaktifkan pada project "${firebaseConfig.projectId}". Silakan buka Firebase Console > Project "${firebaseConfig.projectId}" > Authentication > Klik "Get Started" dan aktifkan Google Sign-In.`
+      );
+    } else if (error.code === 'auth/operation-not-allowed') {
+      throw new Error(
+        `Metode Google Sign-In belum diaktifkan. Silakan buka Firebase Console > Authentication > Sign-in method > Aktifkan "Google".`
+      );
     } else {
       throw new Error(error.message || 'Gagal login dengan Google. Silakan coba kembali.');
     }

@@ -17,6 +17,7 @@ import {
   EnterpriseBranch,
   AccountStatus,
   AuditLog,
+  PaymentStatus,
 } from '../types';
 import {
   initialKostSettings,
@@ -200,7 +201,12 @@ interface KostContextType {
   addInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber'>) => Promise<void>;
   updateInvoice: (invoice: Invoice) => Promise<void>;
   deleteInvoice: (invoiceId: string) => Promise<void>;
-  verifyPayment: (invoiceId: string, status: 'lunas' | 'ditolak', notes?: string) => Promise<void>;
+  verifyPayment: (
+    invoiceId: string,
+    status: 'lunas' | 'ditolak' | 'verifikasi_ditolak',
+    notes?: string,
+    rejectionReason?: string
+  ) => Promise<void>;
   submitTenantPayment: (
     invoiceId: string,
     proofImageUrl: string,
@@ -1366,19 +1372,30 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const verifyPayment = async (invoiceId: string, status: 'lunas' | 'ditolak', notes?: string) => {
+  const verifyPayment = async (
+    invoiceId: string,
+    status: 'lunas' | 'ditolak' | 'verifikasi_ditolak',
+    notes?: string,
+    rejectionReason?: string
+  ) => {
     const now = new Date();
     const verifiedDateStr = now.toISOString().replace('T', ' ').substring(0, 19);
 
     const targetInvoice = allInvoices.find(i => i.id === invoiceId);
     if (targetInvoice) {
+      const isApproved = status === 'lunas';
+      const actualStatus: PaymentStatus = isApproved ? 'lunas' : 'ditolak';
+
       const updatedInv: Invoice = {
         ...targetInvoice,
-        status,
-        paidDate: status === 'lunas' ? targetInvoice.paidDate || now.toISOString().split('T')[0] : undefined,
-        verifiedAt: status === 'lunas' ? verifiedDateStr : undefined,
-        verifiedBy: status === 'lunas' ? 'Pemilik Kos (Terverifikasi)' : undefined,
-        notes: notes || (status === 'lunas' ? 'Pembayaran telah dikonfirmasi dan diverifikasi oleh pemilik.' : 'Pembayaran ditolak/bukti tidak sesuai.'),
+        status: actualStatus,
+        paidDate: isApproved ? targetInvoice.paidDate || now.toISOString().split('T')[0] : undefined,
+        verifiedAt: isApproved ? verifiedDateStr : undefined,
+        verifiedBy: isApproved ? (activeAppUser?.name || 'Pemilik Kos (Terverifikasi)') : undefined,
+        rejectedAt: !isApproved ? verifiedDateStr : undefined,
+        rejectedBy: !isApproved ? (activeAppUser?.name || 'Pemilik Kos') : undefined,
+        rejectionReason: !isApproved ? (rejectionReason || notes || 'Bukti transfer tidak sesuai/valid.') : undefined,
+        notes: notes || (isApproved ? 'Pembayaran telah dikonfirmasi dan diverifikasi oleh pemilik.' : `Verifikasi pembayaran ditolak: ${rejectionReason || 'Bukti tidak sesuai'}`),
       };
 
       setAllInvoices(prev => prev.map(inv => (inv.id === invoiceId ? updatedInv : inv)));
@@ -1390,7 +1407,7 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // If verified lunas, update room status if waiting payment
-      if (status === 'lunas') {
+      if (isApproved) {
         const room = allRooms.find(r => r.id === targetInvoice.roomId);
         if (room && room.status === 'menunggu_pembayaran') {
           const updatedRoom: Room = { ...room, status: 'terisi' };
@@ -1415,6 +1432,7 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const targetInvoice = allInvoices.find(i => i.id === invoiceId);
     
     if (targetInvoice) {
+      const isRePayment = targetInvoice.status === 'ditolak' || targetInvoice.status === 'verifikasi_ditolak';
       const updatedInv: Invoice = {
         ...targetInvoice,
         status: 'menunggu_verifikasi',
@@ -1422,7 +1440,10 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
         proofImageUrl,
         qrisRef: qrisRef || `QRIS-PAY-${Date.now().toString().slice(-6)}`,
         paidDate: today,
-        notes: `Pembayaran dikirim melalui ${method === 'qris' ? 'QRIS Dinamis' : 'Transfer Bank'} pada ${today}. Menunggu konfirmasi pemilik.`,
+        rejectionReason: undefined,
+        rejectedAt: undefined,
+        rejectedBy: undefined,
+        notes: `Pembayaran ${isRePayment ? 'ulang ' : ''}dikirim melalui ${method === 'qris' ? 'QRIS Dinamis' : 'Transfer Bank'} pada ${today}. Menunggu konfirmasi pemilik.`,
       };
 
       setAllInvoices(prev => prev.map(inv => (inv.id === invoiceId ? updatedInv : inv)));

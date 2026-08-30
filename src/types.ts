@@ -103,7 +103,7 @@ export interface Room {
   description: string;
 }
 
-export type PaymentStatus = 'lunas' | 'belum_bayar' | 'menunggu_verifikasi' | 'ditolak';
+export type PaymentStatus = 'lunas' | 'belum_bayar' | 'menunggu_verifikasi' | 'ditolak' | 'verifikasi_ditolak';
 export type PaymentMethod = 'qris' | 'transfer_bank' | 'tunai';
 
 export interface AdditionalFee {
@@ -132,6 +132,9 @@ export interface Invoice {
   qrisRef?: string;
   verifiedAt?: string;
   verifiedBy?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+  rejectionReason?: string;
   notes?: string;
 }
 

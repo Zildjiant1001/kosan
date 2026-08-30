@@ -18,6 +18,8 @@ import {
   Sparkles,
   Info,
   Calendar,
+  XCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 interface TenantPortalProps {
@@ -120,7 +122,8 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
 
   const isPaid = currentInvoice?.status === 'lunas';
   const isPending = currentInvoice?.status === 'menunggu_verifikasi';
-  const isUnpaid = currentInvoice?.status === 'belum_bayar' || !currentInvoice;
+  const isRejected = currentInvoice?.status === 'ditolak' || currentInvoice?.status === 'verifikasi_ditolak';
+  const isUnpaid = (currentInvoice?.status === 'belum_bayar' || !currentInvoice) && !isRejected;
 
   return (
     <div id="tenant-portal-view" className="space-y-6">
@@ -159,11 +162,17 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
       {/* Main Billing Card: Payment via QRIS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Active Bill */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col justify-between space-y-6">
+        <div className={`bg-white border rounded-3xl p-6 shadow-xs flex flex-col justify-between space-y-6 lg:col-span-2 ${
+          isRejected ? 'border-rose-300 ring-2 ring-rose-100' : 'border-slate-200'
+        }`}>
           <div>
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <div className={`p-2 rounded-xl border ${
+                  isRejected 
+                    ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}>
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
@@ -171,11 +180,11 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
                     Tagihan Sewa Periode {formatIndonesianMonthYear(activeReportMonth)}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Terakhir Bayar:{' '}
-                    <strong className={isOverdue && isUnpaid ? 'text-rose-600 font-bold' : 'text-slate-800'}>
+                    Batas Bayar:{' '}
+                    <strong className={isOverdue && !isPaid ? 'text-rose-600 font-bold' : 'text-slate-800'}>
                       {formatIndonesianDate(dueDateStr)}
                     </strong>
-                    {isOverdue && isUnpaid && (
+                    {isOverdue && !isPaid && (
                       <span className="ml-2 text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
                         (Melewati Batas Tgl {dueDateStr.split('-')[2]})
                       </span>
@@ -198,6 +207,12 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
                     MENUNGGU VERIFIKASI
                   </span>
                 )}
+                {isRejected && (
+                  <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-800 font-extrabold text-xs border border-rose-300 inline-flex items-center gap-1.5 animate-pulse">
+                    <XCircle className="w-4 h-4 text-rose-600" />
+                    VERIFIKASI DITOLAK
+                  </span>
+                )}
                 {isUnpaid && (
                   <span className={`px-3 py-1 rounded-full font-extrabold text-xs border inline-flex items-center gap-1.5 ${
                     isOverdue 
@@ -210,6 +225,34 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Rejection Notification Banner */}
+            {isRejected && (
+              <div className="mt-5 p-4 sm:p-5 rounded-2xl bg-rose-50/90 border-2 border-rose-300 text-rose-950 space-y-3 shadow-xs animate-in fade-in duration-300">
+                <div className="flex items-center gap-2 text-rose-800 font-extrabold text-sm sm:text-base">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                  <span>Verifikasi Pembayaran Ditolak Pemilik Kos</span>
+                </div>
+
+                <div className="bg-white/95 p-3.5 rounded-xl border border-rose-200 space-y-1 shadow-2xs">
+                  <div className="text-[11px] font-bold text-rose-700 uppercase tracking-wide flex items-center gap-1">
+                    <span>Alasan Penolakan:</span>
+                  </div>
+                  <p className="text-xs sm:text-sm font-semibold text-rose-900 leading-relaxed">
+                    "{currentInvoice.rejectionReason || currentInvoice.notes || 'Bukti pembayaran tidak sesuai atau dana belum terverifikasi.'}"
+                  </p>
+                  {currentInvoice.rejectedAt && (
+                    <span className="text-[10px] text-rose-600 block pt-1 font-mono">
+                      Ditolak pada: {formatIndonesianDate(currentInvoice.rejectedAt.split(' ')[0])} {currentInvoice.rejectedAt.split(' ')[1] || ''}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-rose-800 font-medium leading-relaxed">
+                  Silakan lakukan pembayaran ulang melalui QRIS di bawah ini dan pastikan mengunggah bukti transfer yang jelas dan nominal yang sesuai.
+                </p>
+              </div>
+            )}
 
             {/* Amount Breakdown */}
             <div className="mt-5 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3">
@@ -236,6 +279,23 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
 
           {/* Payment CTA Buttons */}
           <div className="pt-2">
+            {/* If Rejected: Show Red Repayment CTA with QR Code icon */}
+            {isRejected && currentInvoice && (
+              <div className="space-y-3">
+                <button
+                  id="btn-tenant-repay-qris"
+                  onClick={() => onOpenQRIS(currentInvoice)}
+                  className="w-full py-4 px-6 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-3 shadow-md hover:shadow-lg transition cursor-pointer"
+                >
+                  <QrCode className="w-6 h-6" />
+                  <span>Bayar Ulang dengan QRIS & Unggah Bukti Baru</span>
+                </button>
+                <p className="text-[11px] text-slate-500 text-center">
+                  Setelah bukti baru diunggah, pengelola akan memverifikasi kembali status pembayaran Anda.
+                </p>
+              </div>
+            )}
+
             {isUnpaid && currentInvoice && (
               <div className="space-y-3">
                 <button
@@ -399,8 +459,14 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
                           MENUNGGU KONFIRMASI
                         </span>
                       )}
+                      {(inv.status === 'ditolak' || inv.status === 'verifikasi_ditolak') && (
+                        <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300 font-extrabold text-[10px] inline-flex items-center gap-1">
+                          <XCircle className="w-3 h-3 text-rose-600" />
+                          DITOLAK
+                        </span>
+                      )}
                       {inv.status === 'belum_bayar' && (
-                        <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-extrabold text-[10px]">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-extrabold text-[10px]">
                           BELUM BAYAR
                         </span>
                       )}
@@ -413,8 +479,22 @@ export const TenantPortal: React.FC<TenantPortalProps> = ({
                         >
                           Buka Kuitansi
                         </button>
+                      ) : (inv.status === 'ditolak' || inv.status === 'verifikasi_ditolak') ? (
+                        <button
+                          onClick={() => onOpenQRIS(inv)}
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Bayar Ulang</span>
+                        </button>
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic">Belum Tersedia</span>
+                        <button
+                          onClick={() => onOpenQRIS(inv)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold transition cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <QrCode className="w-3 h-3" />
+                          <span>Bayar QRIS</span>
+                        </button>
                       )}
                     </td>
                   </tr>
