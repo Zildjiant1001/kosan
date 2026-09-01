@@ -430,6 +430,27 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <User className="w-3.5 h-3.5 shrink-0" />
                 <span>Pengaturan Akun</span>
               </button>
+
+              {/* Super Admin Enterprise Tab */}
+              {activeAppUser?.role === 'superadmin' && (
+                <button
+                  id="nav-tab-enterprise"
+                  onClick={() => router.push('/enterprise')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                    activeTab === 'enterprise'
+                      ? 'bg-amber-500 text-slate-950 shadow-2xs font-bold ring-1 ring-amber-400'
+                      : 'bg-amber-500/15 text-amber-900 border border-amber-300/70 hover:bg-amber-500/25'
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                  <span>Super Admin</span>
+                  {pendingApprovalsCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-[10px]">
+                      {pendingApprovalsCount}
+                    </span>
+                  )}
+                </button>
+              )}
             </nav>
           </div>
         )}

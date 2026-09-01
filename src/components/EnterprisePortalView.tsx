@@ -262,7 +262,6 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-emerald-600 selection:text-white">
       {/* 1. TOP ENTERPRISE HEADER (Only shown on standalone /enterprise page) */}
-      {/* 1. TOP ENTERPRISE HEADER (Only shown on standalone /enterprise page) */}
       {!hideHeader && (
         <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-md w-full">
           <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 w-full">
