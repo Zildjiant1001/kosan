@@ -295,31 +295,26 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
               </button>
 
               {/* Header Right Actions */}
-              <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-                {/* Direct Jump to Landing Page */}
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                {/* Quick Jump to Portal Pemilik (Visible on Mobile & Desktop) */}
                 <button
                   type="button"
-                  id="enterprise-landing-btn"
+                  id="enterprise-to-owner-portal-btn"
                   onClick={() => {
-                    if (onGoToLanding) {
-                      onGoToLanding();
-                    } else if (typeof window !== 'undefined') {
-                      window.location.href = '/';
-                    } else {
-                      router.push('/');
-                    }
+                    setRole('pemilik');
+                    if (onGoToPortal) onGoToPortal('pemilik');
+                    else router.push('/portal?role=pemilik');
                   }}
-                  className="px-2 sm:px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer hover:border-emerald-400 active:scale-95 shadow-xs"
-                  title="Buka Halaman Landing Page Utama (Tampilan Tamu / Pengunjung)"
+                  className="px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl border border-emerald-500/50 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer hover:border-emerald-400 active:scale-95 shadow-2xs"
+                  title="Buka Dashboard Operasional Kosan (Portal Pemilik)"
                 >
-                  <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="hidden sm:inline">Landing Page</span>
+                  <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="hidden xs:inline">Portal </span><span>Pemilik</span>
                 </button>
 
                 {/* Ganti Akun (Switch Account Selector) */}
-                <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-800/90 border border-slate-700 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl shadow-xs text-xs">
+                <div className="flex items-center gap-1 bg-slate-800/90 border border-slate-700 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-xl shadow-xs text-xs">
                   <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-slate-400 font-medium hidden md:inline">Akun:</span>
                   <select
                     value={activeAppUser?.id || 'usr-admin-01'}
                     onChange={(e) => {
@@ -335,7 +330,7 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                         }
                       }
                     }}
-                    className="bg-slate-900 text-amber-300 font-bold border-0 rounded-lg px-1 sm:px-2 py-0.5 text-[11px] sm:text-xs focus:outline-none cursor-pointer max-w-[95px] xs:max-w-[120px] sm:max-w-[180px] truncate"
+                    className="bg-slate-900 text-amber-300 font-bold border-0 rounded-lg px-1 py-0.5 text-[11px] sm:text-xs focus:outline-none cursor-pointer max-w-[75px] xs:max-w-[95px] sm:max-w-[140px] truncate"
                     title="Ganti Akun Pengguna Aktif"
                   >
                     {users
@@ -348,20 +343,25 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                   </select>
                 </div>
 
-                {/* Quick Jump to Portal Pemilik */}
-                <div className="hidden lg:flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
-                  <button
-                    onClick={() => {
-                      setRole('pemilik');
-                      if (onGoToPortal) onGoToPortal('pemilik');
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-700 transition flex items-center gap-1 cursor-pointer"
-                    title="Buka Dashboard Operasional Kosan (Pemilik)"
-                  >
-                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Portal Pemilik</span>
-                  </button>
-                </div>
+                {/* Direct Jump to Landing Page */}
+                <button
+                  type="button"
+                  id="enterprise-landing-btn"
+                  onClick={() => {
+                    if (onGoToLanding) {
+                      onGoToLanding();
+                    } else if (typeof window !== 'undefined') {
+                      window.location.href = '/';
+                    } else {
+                      router.push('/');
+                    }
+                  }}
+                  className="p-1 sm:px-2 sm:py-1.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition flex items-center gap-1 cursor-pointer hover:border-slate-600 active:scale-95"
+                  title="Buka Halaman Landing Page Utama (Tampilan Tamu / Pengunjung)"
+                >
+                  <Globe className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <span className="hidden md:inline">Landing</span>
+                </button>
 
                 {/* Logout Button */}
                 <button
@@ -377,7 +377,7 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                       }
                     }
                   }}
-                  className="px-2 sm:px-3 py-1.5 rounded-xl border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer hover:border-rose-700 active:scale-95"
+                  className="p-1 sm:px-2 sm:py-1.5 rounded-xl border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition flex items-center gap-1 cursor-pointer hover:border-rose-700 active:scale-95"
                   title="Keluar dari Akun Super Admin & Masuk ke Halaman Login"
                 >
                   <LogOut className="w-3.5 h-3.5 shrink-0" />
