@@ -162,7 +162,7 @@ const MainKostApp: React.FC = () => {
                       className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5 cursor-pointer"
                     >
                       <FileSpreadsheet className="w-4 h-4" />
-                      <span>Buka Laporan Bulanan</span>
+                      <span>Buka Laporan Keuangan</span>
                     </button>
                     <button
                       onClick={() => setActiveTab('pembayaran')}
@@ -232,7 +232,7 @@ const MainKostApp: React.FC = () => {
               </div>
             )}
 
-            {/* View 3: Laporan Bulanan Online Khusus Pemilik */}
+            {/* View 3: Laporan Keuangan Online Khusus Pemilik */}
             {activeTab === 'laporan' && (
               <div className="animate-in fade-in duration-150">
                 <MonthlyReportView

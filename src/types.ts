@@ -277,3 +277,76 @@ export interface KostSettings {
   lateFeePerDay: number;
   landingPageContent?: LandingPageContent;
 }
+
+// ----------------------------------------------------
+// CALENDAR CONFLICT DETECTOR & RESOLUTION ENGINE TYPES
+// ----------------------------------------------------
+export type ConflictSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+export type ConflictType = 
+  | 'DOUBLE_BOOKING' 
+  | 'TENANT_BOOKING_OVERLAP' 
+  | 'CONCURRENT_TENANT_OVERLAP' 
+  | 'TURNAROUND_TIGHT' 
+  | 'ROOM_STATUS_MISMATCH';
+
+export interface ConflictParty {
+  id: string;
+  type: 'tenant' | 'booking';
+  name: string;
+  phone: string;
+  email?: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  durationMonths: number;
+  avatarUrl?: string;
+}
+
+export interface ConflictResolutionOption {
+  id: string;
+  title: string;
+  description: string;
+  actionType: 
+    | 'REALLOCATE_ROOM' 
+    | 'SHIFT_MOVE_IN_DATE' 
+    | 'PRIORITIZE_FIRST_BOOKING' 
+    | 'REJECT_BOOKING' 
+    | 'SYNC_ROOM_STATUS' 
+    | 'CONFIRM_CHECKOUT_EXTENSION';
+  targetEntityId: string; // bookingId or tenantId or roomId
+  targetEntityType: 'booking' | 'tenant' | 'room';
+  recommended: boolean;
+  confidenceScore: number; // e.g. 95
+  isAutoExecutable: boolean;
+  suggestedRoomId?: number;
+  suggestedRoomNumber?: string;
+  suggestedRoomType?: string;
+  suggestedNewDate?: string;
+  suggestedStatus?: string;
+  whatsappRecipientPhone?: string;
+  whatsappRecipientName?: string;
+  whatsappTemplate?: string;
+}
+
+export interface CalendarConflict {
+  id: string;
+  type: ConflictType;
+  severity: ConflictSeverity;
+  title: string;
+  description: string;
+  roomId: number;
+  roomNumber: string;
+  roomType: string;
+  branchId?: string;
+  branchName?: string;
+  startDate: string;
+  endDate: string;
+  overlapDays: number;
+  partyA: ConflictParty;
+  partyB?: ConflictParty;
+  isEscalated: boolean;
+  escalationReason?: string;
+  resolutionOptions: ConflictResolutionOption[];
+  detectedAt: string;
+}

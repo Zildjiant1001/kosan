@@ -196,6 +196,7 @@ interface KostContextType {
   checkOutTenant: (roomId: number) => Promise<void>;
   deleteTenant: (tenantId: string) => Promise<void>;
   addBooking: (booking: Omit<RentalBooking, 'id' | 'createdAt' | 'status'>) => Promise<string>;
+  updateBooking: (bookingId: string, updates: Partial<RentalBooking>) => Promise<void>;
   updateBookingStatus: (bookingId: string, status: BookingStatus) => Promise<void>;
   deleteBooking: (bookingId: string) => Promise<void>;
   addInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber'>) => Promise<void>;
@@ -1329,6 +1330,15 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateBooking = async (bookingId: string, updates: Partial<RentalBooking>) => {
+    setAllBookings(prev => prev.map(b => (b.id === bookingId ? { ...b, ...updates } : b)));
+    try {
+      await setDoc(doc(db, 'bookings', bookingId), cleanForFirestore(updates), { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `bookings/${bookingId}`);
+    }
+  };
+
   const deleteBooking = async (bookingId: string) => {
     setAllBookings(prev => prev.filter(b => b.id !== bookingId));
     try {
@@ -2385,6 +2395,7 @@ export const KostProvider: React.FC<{ children: React.ReactNode }> = ({ children
         checkOutTenant,
         deleteTenant,
         addBooking,
+        updateBooking,
         updateBookingStatus,
         deleteBooking,
         addInvoice,

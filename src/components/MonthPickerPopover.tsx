@@ -73,7 +73,6 @@ export const MonthPickerPopover: React.FC<MonthPickerPopoverProps> = ({
   const handleSelectMonth = (monthNum: string) => {
     const formatted = `${viewingYear}-${monthNum}`;
     onChange(formatted);
-    setIsOpen(false);
   };
 
   const currentRealMonth = new Date().toISOString().substring(0, 7); // e.g. '2026-08'
@@ -102,25 +101,37 @@ export const MonthPickerPopover: React.FC<MonthPickerPopoverProps> = ({
       {/* Grid Popover Dropdown */}
       {isOpen && (
         <div
-          className={`absolute top-full mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 w-72 sm:w-80 space-y-3.5 animate-in fade-in zoom-in-95 duration-150 ${
+          className={`absolute top-full mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 w-72 sm:w-84 space-y-3.5 animate-in fade-in zoom-in-95 duration-150 ${
             align === 'right' ? 'right-0' : 'left-0'
           }`}
         >
-          {/* Header with Year Navigation */}
+          {/* Header with Year Navigation & Close Button */}
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <button
-              type="button"
-              onClick={() => setViewingYear(prev => prev - 1)}
-              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition cursor-pointer"
-              title="Tahun Sebelumnya"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setViewingYear(prev => prev - 1)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition cursor-pointer"
+                title="Tahun Sebelumnya"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-extrabold text-slate-900 font-heading">
+              <span className="text-sm font-extrabold text-slate-900 font-heading px-1">
                 {viewingYear}
               </span>
+
+              <button
+                type="button"
+                onClick={() => setViewingYear(prev => prev + 1)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition cursor-pointer"
+                title="Tahun Berikutnya"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
               {viewingYear !== new Date().getFullYear() && (
                 <button
                   type="button"
@@ -131,16 +142,16 @@ export const MonthPickerPopover: React.FC<MonthPickerPopoverProps> = ({
                   Tahun Ini
                 </button>
               )}
-            </div>
 
-            <button
-              type="button"
-              onClick={() => setViewingYear(prev => prev + 1)}
-              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition cursor-pointer"
-              title="Tahun Berikutnya"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 text-xs font-bold transition cursor-pointer"
+                title="Tutup Kalender"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* 12 Months Grid */}
@@ -176,24 +187,26 @@ export const MonthPickerPopover: React.FC<MonthPickerPopoverProps> = ({
             })}
           </div>
 
-          {/* Popover Footer Note */}
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              <span>Terpilih: <strong className="text-slate-800 font-bold">{formatIndonesianMonthYear(value)}</strong></span>
-            </span>
-
+          {/* Popover Footer with Active Feedback & Selesai Button */}
+          <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <button
               type="button"
               onClick={() => {
                 const now = new Date().toISOString().substring(0, 7);
                 onChange(now);
                 setViewingYear(new Date().getFullYear());
-                setIsOpen(false);
               }}
               className="text-emerald-600 hover:text-emerald-700 font-bold hover:underline cursor-pointer"
             >
               Bulan Sekarang
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer shadow-2xs"
+            >
+              Selesai & Tutup
             </button>
           </div>
         </div>

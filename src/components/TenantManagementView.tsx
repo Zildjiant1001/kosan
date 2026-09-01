@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useKost } from '../context/KostContext';
 import { Room, Tenant, RentalBooking, BookingStatus } from '../types';
 import { formatRupiah, formatIndonesianDate, formatIndonesianMonthYear } from '../utils/formatters';
+import { MonthPickerPopover } from './MonthPickerPopover';
+import { CalendarConflictDetectorModal } from './CalendarConflictDetectorModal';
+import { detectCalendarConflicts } from '../utils/calendarConflictDetector';
 import {
   Users,
   UserPlus,
@@ -42,6 +45,16 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  CalendarCheck,
+  CalendarRange,
+  Eye,
+  RefreshCw,
+  SlidersHorizontal,
+  ShieldAlert,
+  Zap,
 } from 'lucide-react';
 
 interface TenantManagementViewProps {
@@ -53,6 +66,7 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
     rooms,
     tenants,
     bookings,
+    allBookings,
     users,
     settings,
     branches,
@@ -64,16 +78,26 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
     updateBookingStatus,
     deleteBooking,
     addBooking,
+    updateRoom,
     isCloudConnected,
     firebaseProjectId,
     invoices,
   } = useKost();
 
-  const [activeTab, setActiveTab] = useState<'tenants' | 'all_tenants' | 'cohort'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'all_tenants' | 'calendar_monitor'>('tenants');
   const [searchTerm, setSearchTerm] = useState('');
-  const [cohortTableView, setCohortTableView] = useState<'all' | 'matrix' | 'occupation' | 'lifecycle'>('all');
-  const [cohortFilterStage, setCohortFilterStage] = useState<'all' | 'new' | 'mid' | 'loyal' | 'expiring'>('all');
-  const [showCohortGuide, setShowCohortGuide] = useState(false);
+  
+  // Calendar Block Monitor State
+  const [calendarViewMode, setCalendarViewMode] = useState<'monthly' | 'yearly' | 'matrix'>('monthly');
+  const [calendarFilterStatus, setCalendarFilterStatus] = useState<'all' | 'active' | 'expiring' | 'expired' | 'checkout'>('all');
+  const [selectedCalendarMonth, setSelectedCalendarMonth] = useState<string>(() => new Date().toISOString().substring(0, 7)); // e.g. '2026-08'
+  const [selectedCalendarYear, setSelectedCalendarYear] = useState<number>(() => new Date().getFullYear());
+  const [showCalendarGuide, setShowCalendarGuide] = useState(false);
+  const [isConflictDetectorOpen, setIsConflictDetectorOpen] = useState(false);
+  const [selectedBlockTenant, setSelectedBlockTenant] = useState<any | null>(null);
+  const [extensionMonthsCount, setExtensionMonthsCount] = useState<number>(6);
+  const [isExtendingLoading, setIsExtendingLoading] = useState(false);
+
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
   const [isNewBookingModalOpen, setIsNewBookingModalOpen] = useState(false);
   const [selectedBookingForCheckIn, setSelectedBookingForCheckIn] = useState<RentalBooking | null>(null);
@@ -201,194 +225,110 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
   });
 
   // ----------------------------------------------------
-  // COHORT ANALYSIS & RETENTION ENGINE
+  // CALENDAR BLOCK MONITOR & RESIDENT TIMELINE ENGINE
   // ----------------------------------------------------
   const today = new Date();
 
-  // Process individual cohort records for each registered tenant
-  const tenantCohortRecords = allDatabaseTenants.map(t => {
-    const assignedRoom = rooms.find(r => r.id === t.roomId);
-    const roomNumber = assignedRoom ? assignedRoom.roomNumber : `Kamar 0${t.roomId}`;
-    const roomType = assignedRoom ? assignedRoom.type : 'Deluxe AC';
-    const roomPrice = assignedRoom ? assignedRoom.basePrice : 1750000;
-    const isCurrentlyActive = activeTenants.some(at => String(at.id) === String(t.id) || at.roomId === t.roomId);
+  // Process individual calendar records for each registered tenant
+  const tenantCalendarRecords = useMemo(() => {
+    return allDatabaseTenants.map(t => {
+      const assignedRoom = rooms.find(r => r.id === t.roomId);
+      const roomNumber = assignedRoom ? assignedRoom.roomNumber : `Kamar 0${t.roomId}`;
+      const roomType = assignedRoom ? assignedRoom.type : 'Deluxe AC';
+      const roomPrice = assignedRoom ? assignedRoom.basePrice : 1750000;
+      const isCurrentlyActive = activeTenants.some(at => String(at.id) === String(t.id) || at.roomId === t.roomId);
 
-    const inDate = t.checkInDate ? new Date(t.checkInDate) : new Date(today.getFullYear(), today.getMonth() - 3, 1);
-    const outDate = t.checkOutDate ? new Date(t.checkOutDate) : (!isCurrentlyActive ? new Date(inDate.getTime() + 180 * 24 * 3600 * 1000) : today);
+      const inDateStr = t.checkInDate ? t.checkInDate : '2026-01-01';
+      const inDate = new Date(inDateStr);
 
-    // Calculate months of stay
-    const diffTime = Math.max(0, outDate.getTime() - inDate.getTime());
-    const diffMonths = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24 * 30.4375)));
-    const contractMonths = t.contractDurationMonths || 12;
-    const progressPct = Math.min(100, Math.round((diffMonths / contractMonths) * 100));
+      const contractMonths = t.contractDurationMonths || 12;
+      const contractEndDate = new Date(inDate);
+      contractEndDate.setMonth(contractEndDate.getMonth() + contractMonths);
+      const contractEndDateStr = contractEndDate.toISOString().split('T')[0];
 
-    // Calculate contract end date & remaining days
-    const contractEndDate = new Date(inDate);
-    contractEndDate.setMonth(contractEndDate.getMonth() + contractMonths);
-    const remainingTime = contractEndDate.getTime() - today.getTime();
-    const remainingDays = Math.ceil(remainingTime / (1000 * 60 * 60 * 24));
-    const isExpiringSoon = isCurrentlyActive && remainingDays <= 30;
+      const outDateStr = t.checkOutDate ? t.checkOutDate : (!isCurrentlyActive ? contractEndDateStr : null);
+      const outDate = outDateStr ? new Date(outDateStr) : null;
 
-    // Total LTV from paid invoices or estimated tenure
-    const tenantInvoices = (invoices || []).filter(
-      inv => inv.roomId === t.roomId && (inv.status === 'lunas' || inv.tenantName.toLowerCase().includes(t.name.toLowerCase()))
-    );
-    const actualPaidAmount = tenantInvoices.reduce((acc, inv) => acc + inv.totalAmount, 0);
-    const totalLtv = actualPaidAmount > 0 ? actualPaidAmount : diffMonths * roomPrice;
+      // Calculate stay duration
+      const effectiveEndDate = outDate || (isCurrentlyActive ? today : contractEndDate);
+      const diffTime = Math.max(0, effectiveEndDate.getTime() - inDate.getTime());
+      const diffMonths = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24 * 30.4375)));
+      const progressPct = Math.min(100, Math.max(0, Math.round((diffMonths / contractMonths) * 100)));
 
-    // Cohort Month string: YYYY-MM
-    const cohortMonth = t.checkInDate ? t.checkInDate.substring(0, 7) : '2026-01';
+      // Remaining days until contract expires
+      const remainingTime = contractEndDate.getTime() - today.getTime();
+      const remainingDays = Math.ceil(remainingTime / (1000 * 60 * 60 * 24));
+      const isExpiringSoon = isCurrentlyActive && remainingDays <= 30 && remainingDays > 0;
+      const isExpired = isCurrentlyActive && remainingDays <= 0;
 
-    let stage: 'Baru Masuk (M1-M2)' | 'Masa Stabil (M3-M6)' | 'Penghuni Loyal (>6 bln)' | 'Masa Selesai / Checkout' = 'Baru Masuk (M1-M2)';
-    if (!isCurrentlyActive) {
-      stage = 'Masa Selesai / Checkout';
-    } else if (diffMonths >= 7) {
-      stage = 'Penghuni Loyal (>6 bln)';
-    } else if (diffMonths >= 3) {
-      stage = 'Masa Stabil (M3-M6)';
-    } else {
-      stage = 'Baru Masuk (M1-M2)';
-    }
+      // Billing due day of month (e.g. 1st or check-in date)
+      const billingDueDay = inDate.getDate() || 1;
 
-    return {
-      ...t,
-      roomNumber,
-      roomType,
-      roomPrice,
-      isCurrentlyActive,
-      cohortMonth,
-      stayDurationMonths: diffMonths,
-      contractMonths,
-      contractProgressPct: progressPct,
-      remainingDays,
-      isExpiringSoon,
-      contractEndDate: contractEndDate.toISOString().split('T')[0],
-      totalLtv,
-      stage,
-    };
-  });
+      // Total LTV from paid invoices or estimated tenure
+      const tenantInvoices = (invoices || []).filter(
+        inv => inv.roomId === t.roomId && (inv.status === 'lunas' || inv.tenantName.toLowerCase().includes(t.name.toLowerCase()))
+      );
+      const actualPaidAmount = tenantInvoices.reduce((acc, inv) => acc + inv.totalAmount, 0);
+      const totalLtv = actualPaidAmount > 0 ? actualPaidAmount : diffMonths * roomPrice;
 
-  // Group cohorts by Check-in Month
-  const cohortGroupsMap = new Map<string, typeof tenantCohortRecords>();
-  tenantCohortRecords.forEach(t => {
-    const key = t.cohortMonth;
-    const existing = cohortGroupsMap.get(key) || [];
-    existing.push(t);
-    cohortGroupsMap.set(key, existing);
-  });
+      const branchId = t.branchId || assignedRoom?.branchId;
+      const branchName = getBranchName(branchId);
 
-  const sortedCohortMonths = Array.from(cohortGroupsMap.keys()).sort();
+      let calendarStatus: 'active' | 'expiring' | 'expired' | 'checkout' = 'active';
+      if (!isCurrentlyActive) {
+        calendarStatus = 'checkout';
+      } else if (isExpired) {
+        calendarStatus = 'expired';
+      } else if (isExpiringSoon) {
+        calendarStatus = 'expiring';
+      } else {
+        calendarStatus = 'active';
+      }
 
-  const cohortMatrix = sortedCohortMonths.map((cMonth, idx) => {
-    const group = cohortGroupsMap.get(cMonth) || [];
-    const size = group.length;
-
-    const countAtMonth = (mTarget: number) => group.filter(t => t.stayDurationMonths >= mTarget).length;
-    const rateAtMonth = (mTarget: number) => {
-      if (size === 0) return 0;
-      return Math.round((countAtMonth(mTarget) / size) * 100);
-    };
-
-    const m0 = 100;
-    const m1 = rateAtMonth(2);
-    const m2 = rateAtMonth(3);
-    const m3 = rateAtMonth(4);
-    const m6 = rateAtMonth(7);
-    const m12 = rateAtMonth(13);
-
-    const m0Count = size;
-    const m1Count = countAtMonth(2);
-    const m2Count = countAtMonth(3);
-    const m3Count = countAtMonth(4);
-    const m6Count = countAtMonth(7);
-    const m12Count = countAtMonth(13);
-
-    let status = {
-      label: 'Sangat Loyal 🟢',
-      color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-    };
-    if (m6 < 50 && m3 < 60) {
-      status = {
-        label: 'Tinggi Churn 🔴',
-        color: 'text-rose-700 bg-rose-50 border-rose-200',
+      return {
+        ...t,
+        assignedRoom,
+        roomNumber,
+        roomType,
+        roomPrice,
+        branchId,
+        branchName,
+        isCurrentlyActive,
+        inDate,
+        inDateStr,
+        contractMonths,
+        contractEndDate,
+        contractEndDateStr,
+        outDate,
+        outDateStr,
+        stayDurationMonths: diffMonths,
+        progressPct,
+        remainingDays,
+        isExpiringSoon,
+        isExpired,
+        billingDueDay,
+        totalLtv,
+        calendarStatus,
       };
-    } else if (m6 < 75) {
-      status = {
-        label: 'Cukup Stabil 🟡',
-        color: 'text-amber-700 bg-amber-50 border-amber-200',
-      };
-    }
+    });
+  }, [allDatabaseTenants, rooms, activeTenants, invoices, branches]);
 
-    return {
-      index: idx + 1,
-      month: cMonth,
-      size,
-      m0,
-      m1,
-      m2,
-      m3,
-      m6,
-      m12,
-      m0Count,
-      m1Count,
-      m2Count,
-      m3Count,
-      m6Count,
-      m12Count,
-      status,
-    };
-  });
+  // Aggregated Calendar KPIs
+  const expiringSoonCount = tenantCalendarRecords.filter(t => t.isExpiringSoon).length;
+  const expiredCount = tenantCalendarRecords.filter(t => t.isExpired).length;
+  const activeBlockCount = tenantCalendarRecords.filter(t => t.isCurrentlyActive).length;
+  const totalLtvSum = tenantCalendarRecords.reduce((acc, t) => acc + t.totalLtv, 0);
+  const avgLtv = tenantCalendarRecords.length > 0 ? Math.round(totalLtvSum / tenantCalendarRecords.length) : 0;
+  const avgStayMonths = tenantCalendarRecords.length > 0 ? (tenantCalendarRecords.reduce((acc, t) => acc + t.stayDurationMonths, 0) / tenantCalendarRecords.length).toFixed(1) : '0';
+  const calendarOccupancyRate = Math.round((activeBlockCount / (rooms.length || 1)) * 100);
 
-  // Aggregated KPIs
-  const totalStayMonthsSum = tenantCohortRecords.reduce((acc, t) => acc + t.stayDurationMonths, 0);
-  const avgStayMonths = tenantCohortRecords.length > 0 ? (totalStayMonthsSum / tenantCohortRecords.length).toFixed(1) : '0';
+  // Real-time Calendar Conflicts Detection
+  const calendarConflicts = useMemo(() => {
+    return detectCalendarConflicts(rooms, tenants, activeTenants, allBookings, branches);
+  }, [rooms, tenants, activeTenants, allBookings, branches]);
 
-  const loyalCount = tenantCohortRecords.filter(t => t.stayDurationMonths >= 6).length;
-  const retentionRate6M = tenantCohortRecords.length > 0 ? Math.round((loyalCount / tenantCohortRecords.length) * 100) : 0;
-
-  const totalLtvSum = tenantCohortRecords.reduce((acc, t) => acc + t.totalLtv, 0);
-  const avgLtv = tenantCohortRecords.length > 0 ? Math.round(totalLtvSum / tenantCohortRecords.length) : 0;
-
-  const expiringSoonCount = tenantCohortRecords.filter(t => t.isExpiringSoon).length;
-
-  // Breakdown by occupation
-  const occupationGroupsMap = new Map<string, typeof tenantCohortRecords>();
-  tenantCohortRecords.forEach(t => {
-    const occ = t.occupation || 'Lainnya';
-    const existing = occupationGroupsMap.get(occ) || [];
-    existing.push(t);
-    occupationGroupsMap.set(occ, existing);
-  });
-
-  const occupationStats = Array.from(occupationGroupsMap.entries()).map(([occ, list], idx) => {
-    const count = list.length;
-    const avgStay = (list.reduce((acc, i) => acc + i.stayDurationMonths, 0) / count).toFixed(1);
-    const avgOccLtv = Math.round(list.reduce((acc, i) => acc + i.totalLtv, 0) / count);
-    const activeCount = list.filter(i => i.isCurrentlyActive).length;
-    const checkoutCount = Math.max(0, count - activeCount);
-    const loyalInOcc = list.filter(i => i.stayDurationMonths >= 6).length;
-    const occRetention6M = Math.round((loyalInOcc / (count || 1)) * 100);
-
-    let loyaltyRating = '⭐⭐⭐ Sangat Tinggi';
-    if (occRetention6M < 50) loyaltyRating = '⭐ Rendah';
-    else if (occRetention6M < 75) loyaltyRating = '⭐⭐ Menengah';
-
-    return {
-      index: idx + 1,
-      occupation: occ,
-      count,
-      activeCount,
-      checkoutCount,
-      avgStay,
-      avgLtv: avgOccLtv,
-      pctOfTotal: Math.round((count / (tenantCohortRecords.length || 1)) * 100),
-      retention6M: occRetention6M,
-      loyaltyRating,
-    };
-  }).sort((a, b) => b.count - a.count);
-
-  // Filtered Cohort Records for individual table
-  const filteredCohortRecords = tenantCohortRecords.filter(t => {
+  // Filtered Records for Calendar Block View
+  const filteredCalendarRecords = tenantCalendarRecords.filter(t => {
     const q = searchTerm.toLowerCase();
     const matchSearch =
       !searchTerm ||
@@ -399,20 +339,78 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
 
     if (!matchSearch) return false;
 
-    if (cohortFilterStage === 'new') return t.stage === 'Baru Masuk (M1-M2)';
-    if (cohortFilterStage === 'mid') return t.stage === 'Masa Stabil (M3-M6)';
-    if (cohortFilterStage === 'loyal') return t.stage === 'Penghuni Loyal (>6 bln)';
-    if (cohortFilterStage === 'expiring') return t.isExpiringSoon;
+    if (calendarFilterStatus === 'active') return t.isCurrentlyActive;
+    if (calendarFilterStatus === 'expiring') return t.isExpiringSoon;
+    if (calendarFilterStatus === 'expired') return t.isExpired;
+    if (calendarFilterStatus === 'checkout') return !t.isCurrentlyActive;
     return true;
   });
 
-  const getRetentionBadgeStyle = (rate: number) => {
-    if (rate >= 90) return 'bg-emerald-600 text-white font-bold';
-    if (rate >= 75) return 'bg-emerald-500 text-white font-bold';
-    if (rate >= 60) return 'bg-emerald-100 text-emerald-900 font-semibold';
-    if (rate >= 40) return 'bg-amber-100 text-amber-900 font-medium';
-    if (rate > 0) return 'bg-rose-100 text-rose-800 font-medium';
-    return 'bg-slate-100 text-slate-400';
+  // Action: Quick Contract Extension with Instant State & Firestore Sync
+  const handleExtendContract = async (tenantId: string, additionalMonths: number) => {
+    const target = tenantCalendarRecords.find(t => String(t.id) === String(tenantId));
+    if (!target) return;
+
+    setIsExtendingLoading(true);
+    try {
+      const newDuration = (target.contractDurationMonths || 12) + additionalMonths;
+      
+      // Update tenant in rooms if active
+      if (target.assignedRoom && target.isCurrentlyActive) {
+        const updatedTenant = {
+          ...(target.assignedRoom.tenant || target),
+          contractDurationMonths: newDuration,
+        };
+        await updateRoom({
+          ...target.assignedRoom,
+          tenant: updatedTenant,
+        });
+      }
+
+      const newEnd = new Date(target.inDate);
+      newEnd.setMonth(newEnd.getMonth() + newDuration);
+      const newEndStr = newEnd.toISOString().split('T')[0];
+
+      alert(`Sukses! Masa kontrak sewa untuk ${target.name} (${target.roomNumber}) berhasil diperpanjang +${additionalMonths} bulan (Total: ${newDuration} bulan, hingga ${formatIndonesianDate(newEndStr)}).`);
+      
+      if (selectedBlockTenant && String(selectedBlockTenant.id) === String(tenantId)) {
+        const updatedRemainingTime = newEnd.getTime() - today.getTime();
+        const updatedRemainingDays = Math.ceil(updatedRemainingTime / (1000 * 60 * 60 * 24));
+        setSelectedBlockTenant({
+          ...selectedBlockTenant,
+          contractDurationMonths: newDuration,
+          contractMonths: newDuration,
+          contractEndDate: newEnd,
+          contractEndDateStr: newEndStr,
+          remainingDays: updatedRemainingDays,
+          isExpiringSoon: updatedRemainingDays <= 30 && updatedRemainingDays > 0,
+          isExpired: updatedRemainingDays <= 0,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to extend contract:', err);
+      alert('Terjadi kesalahan saat memperpanjang kontrak sewa.');
+    } finally {
+      setIsExtendingLoading(false);
+    }
+  };
+
+  // Action: 1-Click WhatsApp Reminder
+  const handleSendReminderWA = (tenant: typeof tenantCalendarRecords[0], templateType: 'perpanjang' | 'tagihan' | 'sapaan') => {
+    if (!tenant.phone) return;
+    const clean = tenant.phone.replace(/\D/g, '');
+    const formatted = clean.startsWith('0') ? '62' + clean.slice(1) : clean.startsWith('62') ? clean : '62' + clean;
+
+    let message = '';
+    if (templateType === 'perpanjang') {
+      message = `Halo Kak ${tenant.name} (${tenant.roomNumber}), kami dari pengelola ${settings.kostName} menginformasikan bahwa masa sewa kamar Kakak akan berakhir pada tanggal ${formatIndonesianDate(tenant.contractEndDateStr)} (Sisa ${tenant.remainingDays} hari). Apakah Kakak berencana memperpanjang sewa untuk periode berikutnya? Mohon konfirmasinya ya Kak. Terima kasih! 🙏`;
+    } else if (templateType === 'tagihan') {
+      message = `Halo Kak ${tenant.name} (${tenant.roomNumber}), pengingat tagihan sewa bulanan kos sebesar ${formatRupiah(tenant.roomPrice)} untuk periode berjalan. Pembayaran dapat dilakukan via transfer atau QRIS melalui sistem. Terima kasih atas kerjasamanya! 😊`;
+    } else {
+      message = `Halo Kak ${tenant.name} (${tenant.roomNumber}), salam dari pengelola ${settings.kostName}. Semoga Kakak selalu nyaman tinggal di kos kami. Jika ada kendala fasilitas atau saran, jangan ragu untuk menyampaikan ke kami ya. Terima kasih! ✨`;
+    }
+
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   const pendingBookingsCount = bookings.filter(b => b.status === 'pending' || b.status === 'survey_dijadwalkan').length;
@@ -644,18 +642,18 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
             </div>
           </div>
 
-          <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-3.5">
-            <div className="text-[11px] font-semibold text-purple-700 flex items-center justify-between">
-              <span>Masa Tinggal & Retensi (Kohort)</span>
-              <TrendingUp className="w-3.5 h-3.5 text-purple-600" />
+          <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5">
+            <div className="text-[11px] font-semibold text-indigo-700 flex items-center justify-between">
+              <span>Monitor Blok Kalender Sewa</span>
+              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
             </div>
-            <div className="text-xl sm:text-2xl font-black text-purple-900 mt-1">
-              {avgStayMonths} <span className="text-xs font-normal text-purple-600">Bulan / Penyewa</span>
+            <div className="text-xl sm:text-2xl font-black text-indigo-900 mt-1">
+              {activeBlockCount} <span className="text-xs font-normal text-indigo-600">/ {rooms.length} Kamar Aktif</span>
             </div>
-            <div className="text-[10px] text-purple-700 font-bold mt-1 flex items-center gap-1">
-              <span>{retentionRate6M}% Retensi &gt;6 Bln</span>
+            <div className="text-[10px] text-indigo-700 font-bold mt-1 flex items-center gap-1">
+              <span>{calendarOccupancyRate}% Okupansi Blok</span>
               <span>&bull;</span>
-              <span>Avg LTV {formatRupiah(avgLtv)}</span>
+              <span>{expiringSoonCount > 0 ? `${expiringSoonCount} Perlu Perpanjang` : 'Semua Kontrak Aman'}</span>
             </div>
           </div>
         </div>
@@ -689,15 +687,15 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
             </button>
 
             <button
-              onClick={() => setActiveTab('cohort')}
+              onClick={() => setActiveTab('calendar_monitor')}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'cohort'
-                  ? 'bg-purple-600 text-white shadow-xs'
+                activeTab === 'calendar_monitor'
+                  ? 'bg-indigo-600 text-white shadow-xs'
                   : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>Analisis Kohort ({allDatabaseTenants.length})</span>
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Calendar Block Monitor ({allDatabaseTenants.length})</span>
               {expiringSoonCount > 0 && (
                 <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center animate-pulse" title={`${expiringSoonCount} penghuni mendekati akhir kontrak`}>
                   {expiringSoonCount}
@@ -710,7 +708,7 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder={activeTab === 'cohort' ? 'Cari kohort / nama / kamar...' : 'Cari nama, kamar, NIK...'}
+              placeholder={activeTab === 'calendar_monitor' ? 'Cari nama / kamar / NIK di kalender...' : 'Cari nama, kamar, NIK...'}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -1084,98 +1082,207 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
           </div>
         )}
 
-        {/* Tab 3: Analisis Kohort Penghuni Terdaftar (Format Tabel Jelas & Mudah Dipahami) */}
-        {activeTab === 'cohort' && (
+        {/* Tab 3: Calendar Block Monitor Tiap Penghuni */}
+        {activeTab === 'calendar_monitor' && (
           <div className="p-4 sm:p-6 space-y-6 animate-in fade-in duration-200">
             {/* Top Insight Header Banner */}
-            <div className="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md relative overflow-hidden">
-              <div className="absolute right-0 top-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md relative z-30">
+              <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+                <div className="absolute right-0 top-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+              </div>
               <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1 max-w-2xl">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 rounded-full bg-purple-400/20 text-purple-200 text-[10px] font-bold border border-purple-400/30 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-purple-300" />
-                      <span>Tabel Analisis Kohort & LTV Real-time</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-400/20 text-indigo-200 text-[10px] font-bold border border-indigo-400/30 flex items-center gap-1">
+                      <CalendarDays className="w-3 h-3 text-indigo-300" />
+                      <span>Timeline Blok Kalender Sewa Real-time</span>
                     </span>
-                    <span className="text-xs text-purple-200 font-medium">
-                      Total Data: {allDatabaseTenants.length} Penyewa Terdaftar
+                    <span className="text-xs text-indigo-200 font-medium">
+                      Total {allDatabaseTenants.length} Data Penyewa Terdaftar
                     </span>
                   </div>
                   <h3 className="text-lg sm:text-xl font-extrabold font-heading tracking-tight text-white">
-                    Tabel Analisis Kohort & Retensi Penghuni Kos
+                    Calendar Block Monitor Sewa Tiap Penghuni
                   </h3>
-                  <p className="text-xs text-purple-200/90 leading-relaxed">
-                    Format tabel analitik untuk memantau retensi sewa bulanan, daya tahan profesi penyewa, durasi kontrak berjalan, dan estimasi Customer Lifetime Value (LTV) secara terstruktur.
+                  <p className="text-xs text-indigo-200/90 leading-relaxed">
+                    Pantau alokasi timeline sewa, masa tinggal aktif, tanggal jatuh tempo pembayaran, dan estimasi akhir kontrak tiap penghuni kos dalam format blok visual yang mudah dipahami.
                   </p>
                 </div>
 
+                {/* Period Controls & Quick Jump */}
                 <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+                  <div className="flex items-center bg-white/10 backdrop-blur-md rounded-xl border border-white/15 p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const [y, m] = selectedCalendarMonth.split('-').map(Number);
+                        const prevDate = new Date(y, m - 2, 1);
+                        const newStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+                        setSelectedCalendarMonth(newStr);
+                        setSelectedCalendarYear(prevDate.getFullYear());
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-white/20 text-indigo-100 transition cursor-pointer"
+                      title="Bulan Sebelumnya"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    <MonthPickerPopover
+                      value={selectedCalendarMonth}
+                      onChange={(newMonth) => {
+                        setSelectedCalendarMonth(newMonth);
+                        const yr = parseInt(newMonth.split('-')[0], 10);
+                        if (!isNaN(yr)) setSelectedCalendarYear(yr);
+                      }}
+                      label=""
+                      align="right"
+                      className="text-white"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const [y, m] = selectedCalendarMonth.split('-').map(Number);
+                        const nextDate = new Date(y, m, 1);
+                        const newStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+                        setSelectedCalendarMonth(newStr);
+                        setSelectedCalendarYear(nextDate.getFullYear());
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-white/20 text-indigo-100 transition cursor-pointer"
+                      title="Bulan Berikutnya"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setShowCohortGuide(!showCohortGuide)}
-                    className="px-3.5 py-2 rounded-xl bg-purple-500/30 hover:bg-purple-500/40 text-purple-100 text-xs font-bold border border-purple-400/40 flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    onClick={() => {
+                      const nowStr = new Date().toISOString().substring(0, 7);
+                      setSelectedCalendarMonth(nowStr);
+                      setSelectedCalendarYear(new Date().getFullYear());
+                    }}
+                    className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-indigo-100 text-xs font-bold border border-white/15 transition cursor-pointer"
                   >
-                    <BookOpen className="w-3.5 h-3.5 text-purple-200" />
-                    <span>{showCohortGuide ? 'Tutup Panduan' : '📖 Panduan Membaca Tabel'}</span>
+                    Bulan Ini
                   </button>
 
-                  <div className="bg-white/10 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/15 text-center">
-                    <span className="text-[10px] text-purple-200 block uppercase font-semibold">Retensi &gt;6 Bln</span>
-                    <span className="text-lg font-black text-emerald-300">{retentionRate6M}%</span>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/15 text-center">
-                    <span className="text-[10px] text-purple-200 block uppercase font-semibold">Rata-rata LTV</span>
-                    <span className="text-lg font-black text-amber-300">{formatRupiah(avgLtv)}</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCalendarGuide(!showCalendarGuide)}
+                    className="px-3 py-2 rounded-xl bg-indigo-500/30 hover:bg-indigo-500/40 text-indigo-100 text-xs font-bold border border-indigo-400/40 flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-indigo-200" />
+                    <span>{showCalendarGuide ? 'Tutup Panduan' : '📖 Panduan Blok Kalender'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsConflictDetectorOpen(true)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
+                      calendarConflicts.length > 0
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400 animate-pulse'
+                        : 'bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-100 border-indigo-400/30'
+                    }`}
+                    title="Buka Detektor Konflik Kalender & Double-Booking"
+                  >
+                    <ShieldAlert className={`w-3.5 h-3.5 ${calendarConflicts.length > 0 ? 'text-white' : 'text-indigo-300'}`} />
+                    <span>
+                      {calendarConflicts.length > 0
+                        ? `⚡ ${calendarConflicts.length} Konflik Terdeteksi!`
+                        : '⚡ Detektor Konflik Kalender'}
+                    </span>
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* Collapsible Educational Guide Box for Easy Understanding */}
-            {showCohortGuide && (
-              <div className="bg-purple-50/90 border border-purple-200 rounded-2xl p-5 text-xs text-purple-950 space-y-3.5 animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between border-b border-purple-200/80 pb-2">
-                  <div className="flex items-center gap-2 font-black text-purple-900 text-sm">
-                    <HelpCircle className="w-4 h-4 text-purple-700" />
-                    <span>Panduan Memahami Tabel Analisis Kohort Properti Kos</span>
+            {/* Real-time Conflict Alert Banner if any conflicts exist */}
+            {calendarConflicts.length > 0 && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-rose-50 border border-rose-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-rose-600 text-white shadow-xs shrink-0 animate-bounce">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-sm text-rose-950 font-heading flex items-center gap-2">
+                      <span>Peringatan Sistem: {calendarConflicts.length} Konflik Jadwal & Double-Booking Terdeteksi!</span>
+                      <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black uppercase">
+                        Action Required
+                      </span>
+                    </h4>
+                    <p className="text-xs text-rose-700 mt-0.5">
+                      Ditemukan jadwal sewa bertabrakan atau tumpang tindih pada kamar. AI telah menyiapkan opsi relokasi kamar kosong & penyesuaian otomatis.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsConflictDetectorOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Zap className="w-4 h-4 text-amber-300" />
+                  <span>Buka Evaluasi & Solusi Otomatis</span>
+                </button>
+              </div>
+            )}
+
+            {/* Collapsible Educational Guide Box */}
+            {showCalendarGuide && (
+              <div className="bg-indigo-50/90 border border-indigo-200 rounded-2xl p-5 text-xs text-indigo-950 space-y-3.5 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between border-b border-indigo-200/80 pb-2">
+                  <div className="flex items-center gap-2 font-black text-indigo-900 text-sm">
+                    <HelpCircle className="w-4 h-4 text-indigo-700" />
+                    <span>Panduan Membaca Calendar Block Monitor Sewa Penghuni Kos</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowCohortGuide(false)}
-                    className="text-purple-600 hover:text-purple-900 text-xs font-bold cursor-pointer"
+                    onClick={() => setShowCalendarGuide(false)}
+                    className="text-indigo-600 hover:text-indigo-900 text-xs font-bold cursor-pointer"
                   >
                     ✕ Tutup
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                  <div className="bg-white p-3.5 rounded-xl border border-purple-100 space-y-1">
-                    <h5 className="font-bold text-purple-900 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px]">1</span>
-                      <span>Apa itu Kohort (Cohort)?</span>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+                  <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-1">
+                    <h5 className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      <span>🟢 Blok Sewa Aktif (Hijau)</span>
                     </h5>
-                    <p className="text-[11px] text-purple-800 leading-relaxed">
-                      Kelompok penyewa yang mulai <strong>check-in pada bulan yang sama</strong> (misal: Kohort Jan 2026). Memudahkan Anda melihat apakah penyewa baru betah atau cepat keluar.
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Menandakan penyewa sedang dalam masa tinggal sah dan aktif sesuai durasi kontrak sewa terdaftar.
                     </p>
                   </div>
 
-                  <div className="bg-white p-3.5 rounded-xl border border-purple-100 space-y-1">
-                    <h5 className="font-bold text-purple-900 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px]">2</span>
-                      <span>Arti Kolom M0, M1, M3, M6, M12</span>
+                  <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-1">
+                    <h5 className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                      <span>🟡 Mendekati Akhir (&le;30 Hari)</span>
                     </h5>
-                    <p className="text-[11px] text-purple-800 leading-relaxed">
-                      <strong>M0 (Bulan 1)</strong> = 100% masuk. <strong>M1 (Bln 2)</strong> = % yang lanjut tinggal bulan ke-2. <strong>M6 (Bln 7)</strong> = % yang bertahan di atas 6 bulan.
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Kontrak penyewa akan berakhir dalam waktu dekat. Perlu segera konfirmasi perpanjangan sewa via WhatsApp.
                     </p>
                   </div>
 
-                  <div className="bg-white p-3.5 rounded-xl border border-purple-100 space-y-1">
-                    <h5 className="font-bold text-purple-900 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[10px]">3</span>
-                      <span>Apa itu Customer LTV?</span>
+                  <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-1">
+                    <h5 className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                      <span>🔵 Titik Check-In & Jatuh Tempo</span>
                     </h5>
-                    <p className="text-[11px] text-purple-800 leading-relaxed">
-                      <strong>Lifetime Value</strong> adalah total akumulasi uang sewa yang berhasil diperoleh dari seorang penyewa selama masa tinggalnya di kos Anda.
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Penanda hari mulai masuk (IN) dan hari penagihan jatuh tempo sewa bulanan untuk tiap penghuni.
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-1">
+                    <h5 className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-800"></span>
+                      <span>⚪ Status OUT & Cabang Aktif</span>
+                    </h5>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Penanda tanggal resmi penghuni keluar (OUT) beserta badge cabang properti kos asal penyewa.
                     </p>
                   </div>
                 </div>
@@ -1186,8 +1293,23 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
               <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-1">
                 <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-bold">Rata-rata Masa Tinggal</span>
-                  <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-100">
+                  <span className="text-[11px] font-bold">Okupansi Blok Kalender</span>
+                  <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
+                    <CalendarCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-2xl font-black text-indigo-900 font-heading">
+                  {calendarOccupancyRate}%
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  {activeBlockCount} dari {rooms.length} kamar terisi aktif
+                </p>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-1">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span className="text-[11px] font-bold">Rata-rata Durasi Sewa</span>
+                  <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100">
                     <Clock className="w-4 h-4" />
                   </div>
                 </div>
@@ -1195,28 +1317,13 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
                   {avgStayMonths} <span className="text-xs font-semibold text-slate-500">Bulan</span>
                 </div>
                 <p className="text-[10px] text-slate-500">
-                  Dihitung dari {allDatabaseTenants.length} penghuni terdaftar
+                  Total {allDatabaseTenants.length} penghuni di database
                 </p>
               </div>
 
               <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-1">
                 <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-bold">Retensi Kohort &gt;6 Bulan</span>
-                  <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100">
-                    <Award className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="text-2xl font-black text-emerald-600 font-heading">
-                  {retentionRate6M}%
-                </div>
-                <p className="text-[10px] text-slate-500">
-                  {loyalCount} dari {allDatabaseTenants.length} penyewa bertahan &gt;6 bulan
-                </p>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-1">
-                <div className="flex items-center justify-between text-slate-500">
-                  <span className="text-[11px] font-bold">Rata-rata Nilai LTV</span>
+                  <span className="text-[11px] font-bold">Rata-rata LTV Per Penghuni</span>
                   <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600 border border-amber-100">
                     <CreditCard className="w-4 h-4" />
                   </div>
@@ -1225,7 +1332,7 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
                   {formatRupiah(avgLtv)}
                 </div>
                 <p className="text-[10px] text-slate-500">
-                  Total kontribusi sewa per penyewa
+                  Total akumulasi: {formatRupiah(totalLtvSum)}
                 </p>
               </div>
 
@@ -1249,265 +1356,720 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
               </div>
             </div>
 
-            {/* Table Selection Switcher Bar */}
-            <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 flex items-center gap-1.5 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setCohortTableView('all')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  cohortTableView === 'all'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Table className="w-3.5 h-3.5 text-purple-600" />
-                <span>Semua Tabel Analisis</span>
-              </button>
+            {/* View Mode Switcher & Filter Toolbar */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-2 bg-slate-100/90 rounded-2xl border border-slate-200">
+              {/* View Mode Buttons */}
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setCalendarViewMode('monthly')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    calendarViewMode === 'monthly'
+                      ? 'bg-white text-indigo-900 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>🗓️ Kalender Harian ({formatIndonesianMonthYear(selectedCalendarMonth)})</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setCohortTableView('matrix')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  cohortTableView === 'matrix'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Tabel 1: Matriks Retensi Bulanan ({cohortMatrix.length} Kohort)</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setCalendarViewMode('yearly')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    calendarViewMode === 'yearly'
+                      ? 'bg-white text-indigo-900 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CalendarRange className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>📅 Timeline 12 Bulan ({selectedCalendarYear})</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setCohortTableView('occupation')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  cohortTableView === 'occupation'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Briefcase className="w-3.5 h-3.5 text-teal-600" />
-                <span>Tabel 2: Analisis Retensi Profesi ({occupationStats.length} Profesi)</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setCalendarViewMode('matrix')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    calendarViewMode === 'matrix'
+                      ? 'bg-white text-indigo-900 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Table className="w-3.5 h-3.5 text-purple-600" />
+                  <span>📊 Matriks Blok & Sisa Kontrak</span>
+                </button>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => setCohortTableView('lifecycle')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  cohortTableView === 'lifecycle'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-blue-600" />
-                <span>Tabel 3: Siklus Hidup Penghuni ({tenantCohortRecords.length} Orang)</span>
-              </button>
+              {/* Status Filter Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                <button
+                  onClick={() => setCalendarFilterStatus('all')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    calendarFilterStatus === 'all'
+                      ? 'bg-slate-800 text-white shadow-2xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+                  }`}
+                >
+                  Semua ({tenantCalendarRecords.length})
+                </button>
+                <button
+                  onClick={() => setCalendarFilterStatus('active')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    calendarFilterStatus === 'active'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  }`}
+                >
+                  🟢 Aktif ({activeBlockCount})
+                </button>
+                <button
+                  onClick={() => setCalendarFilterStatus('expiring')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    calendarFilterStatus === 'expiring'
+                      ? 'bg-amber-600 text-white shadow-2xs font-bold'
+                      : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                  }`}
+                >
+                  🟡 Mendekati Akhir ({expiringSoonCount})
+                </button>
+                <button
+                  onClick={() => setCalendarFilterStatus('checkout')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                    calendarFilterStatus === 'checkout'
+                      ? 'bg-slate-700 text-white shadow-2xs font-bold'
+                      : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  ⚪ Status OUT / Selesai ({checkoutHistoryCount})
+                </button>
+              </div>
             </div>
 
-            {/* TABEL 1: Matriks Retensi Kohort Bulanan (Heatmap Retention Table) */}
-            {(cohortTableView === 'all' || cohortTableView === 'matrix') && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3.5">
+            {/* VIEW 1: KALENDER HARIAN BULANAN (1 to 28/30/31 Days Grid) */}
+            {calendarViewMode === 'monthly' && (() => {
+              const [viewYear, viewMonthNum] = selectedCalendarMonth.split('-').map(Number);
+              const daysInMonth = new Date(viewYear, viewMonthNum, 0).getDate();
+              const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+              return (
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase">
+                          Blok Harian
+                        </span>
+                        <h4 className="font-extrabold text-sm text-slate-900 font-heading">
+                          Monitor Kalender Blok Harian &mdash; {formatIndonesianMonthYear(selectedCalendarMonth)}
+                        </h4>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Menampilkan status hunian kamar tiap tanggal pada bulan {formatIndonesianMonthYear(selectedCalendarMonth)}. Klik pada baris atau blok untuk detail & perpanjangan kontrak.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-600 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        Aktif Menghuni
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        Masuk (IN)
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                        Akhir Kontrak
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-slate-800"></span>
+                        Keluar (OUT)
+                      </span>
+                    </div>
+                  </div>
+
+                  {filteredCalendarRecords.length > 0 ? (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                      <table className="w-full text-xs text-left border-collapse min-w-[900px]">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                            <th className="py-2.5 px-3 sticky left-0 z-20 bg-slate-50 min-w-[200px] border-r border-slate-200 shadow-xs">
+                              Penghuni & Kamar
+                            </th>
+                            <th className="py-2.5 px-2.5 text-center min-w-[100px] border-r border-slate-200">
+                              Status Kontrak
+                            </th>
+                            {daysArray.map(d => {
+                              const dayDate = new Date(viewYear, viewMonthNum - 1, d);
+                              const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
+                              const isTodayDate = dayDate.toDateString() === today.toDateString();
+
+                              return (
+                                <th
+                                  key={d}
+                                  className={`py-2 px-1 text-center font-bold text-[10px] min-w-[28px] border-r border-slate-100 ${
+                                    isTodayDate
+                                      ? 'bg-indigo-100/80 text-indigo-900 font-black'
+                                      : isWeekend
+                                      ? 'bg-amber-50/50 text-amber-800'
+                                      : 'text-slate-600'
+                                  }`}
+                                  title={`Tanggal ${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}`}
+                                >
+                                  <div>{d}</div>
+                                  <div className="text-[8px] font-normal opacity-70">
+                                    {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'][dayDate.getDay()]}
+                                  </div>
+                                </th>
+                              );
+                            })}
+                            <th className="py-2.5 px-3 text-right sticky right-0 z-20 bg-slate-50 min-w-[110px] border-l border-slate-200 shadow-xs">
+                              Aksi
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredCalendarRecords.map(item => {
+                            return (
+                              <tr
+                                key={item.id}
+                                className="hover:bg-indigo-50/30 transition group"
+                              >
+                                {/* Sticky Resident Info Column */}
+                                <td
+                                  onClick={() => setSelectedBlockTenant(item)}
+                                  className="py-2.5 px-3 sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r border-slate-200 shadow-xs cursor-pointer"
+                                  title="Klik untuk melihat detail & perpanjangan sewa"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <img
+                                      src={
+                                        item.avatarUrl ||
+                                        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
+                                      }
+                                      alt={item.name}
+                                      className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="font-extrabold text-slate-900 truncate font-heading text-xs">
+                                        {item.name}
+                                      </div>
+                                      <div className="text-[10px] text-slate-500 flex items-center gap-1 truncate flex-wrap mt-0.5">
+                                        <span className="font-bold text-indigo-700">{item.roomNumber}</span>
+                                        <span>&bull;</span>
+                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-teal-50 text-teal-800 font-semibold text-[9px] border border-teal-200 truncate max-w-[120px]">
+                                          <Building2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />
+                                          <span className="truncate">{item.branchName}</span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Contract Status Summary */}
+                                <td className="py-2 px-2.5 text-center border-r border-slate-200">
+                                  {item.isCurrentlyActive ? (
+                                    item.isExpiringSoon ? (
+                                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[9px] block whitespace-nowrap animate-pulse">
+                                        Sisa {item.remainingDays} Hari
+                                      </span>
+                                    ) : item.isExpired ? (
+                                      <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[9px] block whitespace-nowrap">
+                                        Lewat Kontrak
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[9px] block whitespace-nowrap">
+                                        Aktif ({item.stayDurationMonths}/{item.contractMonths} Bln)
+                                      </span>
+                                    )
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 font-bold text-[9px] block whitespace-nowrap">
+                                      OUT (Selesai)
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* 28-31 Day Cells */}
+                                {daysArray.map(d => {
+                                  const dayDate = new Date(viewYear, viewMonthNum - 1, d, 12, 0, 0);
+                                  const inTime = new Date(item.inDate.getFullYear(), item.inDate.getMonth(), item.inDate.getDate(), 0, 0, 0).getTime();
+                                  const endTime = new Date(item.contractEndDate.getFullYear(), item.contractEndDate.getMonth(), item.contractEndDate.getDate(), 23, 59, 59).getTime();
+                                  const currentDayTime = dayDate.getTime();
+                                  const outTime = item.outDate ? new Date(item.outDate.getFullYear(), item.outDate.getMonth(), item.outDate.getDate(), 23, 59, 59).getTime() : null;
+
+                                  const isBeforeCheckIn = currentDayTime < inTime;
+                                  const isAfterContract = currentDayTime > endTime;
+                                  const isCheckOutDay = !item.isCurrentlyActive && item.outDate && dayDate.toDateString() === item.outDate.toDateString();
+                                  const isAfterCheckout = !item.isCurrentlyActive && outTime && currentDayTime > outTime;
+
+                                  const isCheckInDay = dayDate.toDateString() === item.inDate.toDateString();
+                                  const isContractEndDay = dayDate.toDateString() === item.contractEndDate.toDateString();
+                                  const isTodayDate = dayDate.toDateString() === today.toDateString();
+
+                                  let cellClass = 'bg-slate-50/40 text-slate-300';
+                                  let cellLabel = '';
+                                  let cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Kamar Kosong / Belum Sewa`;
+
+                                  if (isBeforeCheckIn) {
+                                    cellClass = 'bg-slate-50/40 text-slate-300';
+                                  } else if (isCheckOutDay) {
+                                    cellClass = 'bg-slate-900 text-white font-black shadow-2xs ring-1 ring-slate-700';
+                                    cellLabel = 'OUT';
+                                    cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Tanggal Check-Out / Selesai Sewa (${item.name})`;
+                                  } else if (isAfterCheckout) {
+                                    cellClass = 'bg-slate-100/60 text-slate-400';
+                                    cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Sudah Check-Out (Status OUT)`;
+                                  } else if (isAfterContract) {
+                                    if (item.isCurrentlyActive) {
+                                      cellClass = 'bg-rose-100 text-rose-800 font-bold';
+                                      cellLabel = '!';
+                                      cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Kontrak Lewat Batas`;
+                                    } else {
+                                      cellClass = 'bg-slate-100 text-slate-400';
+                                    }
+                                  } else {
+                                    // Within contract
+                                    if (isCheckInDay) {
+                                      cellClass = 'bg-blue-600 text-white font-black shadow-2xs ring-1 ring-blue-400';
+                                      cellLabel = 'IN';
+                                      cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Tanggal Mulai Check-In (${item.name})`;
+                                    } else if (isContractEndDay) {
+                                      cellClass = 'bg-amber-500 text-white font-black shadow-2xs ring-1 ring-amber-300 animate-pulse';
+                                      cellLabel = 'EXP';
+                                      cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Batas Akhir Kontrak Sewa (${item.name})`;
+                                    } else if (item.isExpiringSoon) {
+                                      cellClass = 'bg-amber-100 hover:bg-amber-200 text-amber-900';
+                                      cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Masa Sewa Aktif - Mendekati Akhir Kontrak (${item.name})`;
+                                    } else {
+                                      cellClass = 'bg-emerald-500 hover:bg-emerald-600 text-white';
+                                      cellTooltip = `${d} ${formatIndonesianMonthYear(selectedCalendarMonth)}: Masa Sewa Aktif Normal (${item.name})`;
+                                    }
+                                  }
+
+                                  return (
+                                    <td
+                                      key={d}
+                                      className={`p-0.5 text-center border-r border-slate-100 h-8 ${isTodayDate ? 'ring-1 ring-indigo-400' : ''}`}
+                                      title={cellTooltip}
+                                    >
+                                      <div className={`w-full h-7 rounded flex items-center justify-center text-[9px] transition ${cellClass}`}>
+                                        {cellLabel || (cellClass.includes('emerald-500') ? '•' : '')}
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+
+                                {/* Sticky Action Column */}
+                                <td
+                                  className="py-2 px-3 sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-slate-200 shadow-xs"
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {item.phone && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSendReminderWA(item, item.isExpiringSoon ? 'perpanjang' : 'sapaan')}
+                                        className={`p-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                          item.isExpiringSoon
+                                            ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                                        }`}
+                                        title={item.isExpiringSoon ? 'Kirim WA Pengingat Perpanjangan' : 'Chat WhatsApp Penghuni'}
+                                      >
+                                        <MessageSquare className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedBlockTenant(item)}
+                                      className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] border border-indigo-200 transition cursor-pointer"
+                                      title="Buka Detail Blok & Perpanjang Kontrak"
+                                    >
+                                      Detail
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-slate-400 text-xs italic">
+                      Tidak ada data sewa yang cocok dengan filter yang dipilih.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* VIEW 2: TIMELINE 12 BULAN (Yearly Overview Jan-Des) */}
+            {calendarViewMode === 'yearly' && (() => {
+              const monthsList = [
+                { num: 0, name: 'Jan', full: 'Januari' },
+                { num: 1, name: 'Feb', full: 'Februari' },
+                { num: 2, name: 'Mar', full: 'Maret' },
+                { num: 3, name: 'Apr', full: 'April' },
+                { num: 4, name: 'Mei', full: 'Mei' },
+                { num: 5, name: 'Jun', full: 'Juni' },
+                { num: 6, name: 'Jul', full: 'Juli' },
+                { num: 7, name: 'Agu', full: 'Agustus' },
+                { num: 8, name: 'Sep', full: 'September' },
+                { num: 9, name: 'Okt', full: 'Oktober' },
+                { num: 10, name: 'Nov', full: 'November' },
+                { num: 11, name: 'Des', full: 'Desember' },
+              ];
+
+              return (
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                          Timeline Tahunan
+                        </span>
+                        <h4 className="font-extrabold text-sm text-slate-900 font-heading">
+                          Timeline Blok Sewa 12 Bulan &mdash; Tahun {selectedCalendarYear}
+                        </h4>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Gambaran komprehensif alokasi dan kelangsungan sewa seluruh penghuni sepanjang tahun {selectedCalendarYear}.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCalendarYear(prev => prev - 1)}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+                        title="Tahun Sebelumnya"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="font-extrabold text-sm text-slate-800 font-heading">
+                        {selectedCalendarYear}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCalendarYear(prev => prev + 1)}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+                        title="Tahun Berikutnya"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-xs text-left border-collapse min-w-[850px]">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                          <th className="py-2.5 px-3 sticky left-0 z-20 bg-slate-50 min-w-[200px] border-r border-slate-200">
+                            Penghuni & Kamar
+                          </th>
+                          <th className="py-2.5 px-2.5 text-center min-w-[90px] border-r border-slate-200">
+                            Masa Sewa
+                          </th>
+                          {monthsList.map(m => {
+                            const isCurrentMonth = today.getFullYear() === selectedCalendarYear && today.getMonth() === m.num;
+
+                            return (
+                              <th
+                                key={m.num}
+                                className={`py-2.5 px-2 text-center text-xs font-bold min-w-[55px] border-r border-slate-100 ${
+                                  isCurrentMonth ? 'bg-indigo-100 text-indigo-900 font-black' : 'text-slate-700'
+                                }`}
+                              >
+                                <div>{m.name}</div>
+                                {isCurrentMonth && (
+                                  <div className="text-[8px] text-indigo-600 font-extrabold uppercase">Kini</div>
+                                )}
+                              </th>
+                            );
+                          })}
+                          <th className="py-2.5 px-3 text-right sticky right-0 z-20 bg-slate-50 min-w-[90px] border-l border-slate-200">
+                            Aksi
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredCalendarRecords.map(item => {
+                          return (
+                            <tr
+                              key={item.id}
+                              className="hover:bg-indigo-50/30 transition group"
+                            >
+                              {/* Sticky Info */}
+                              <td
+                                onClick={() => setSelectedBlockTenant(item)}
+                                className="py-2.5 px-3 sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r border-slate-200 shadow-xs cursor-pointer"
+                                title="Klik untuk melihat detail & perpanjangan sewa"
+                              >
+                                <div className="font-extrabold text-slate-900 truncate font-heading text-xs">
+                                  {item.name}
+                                </div>
+                                <div className="text-[10px] text-slate-500 flex items-center gap-1 flex-wrap mt-0.5">
+                                  <span className="font-bold text-indigo-700">{item.roomNumber}</span>
+                                  <span>&bull;</span>
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-teal-50 text-teal-800 font-semibold text-[9px] border border-teal-200 truncate max-w-[110px]">
+                                    <Building2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />
+                                    <span className="truncate">{item.branchName}</span>
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="py-2 px-2.5 text-center text-[10px] text-slate-600 font-semibold border-r border-slate-200">
+                                {item.isCurrentlyActive ? (
+                                  <span>{item.stayDurationMonths} / {item.contractMonths} Bln</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[9px] border border-slate-300">OUT</span>
+                                )}
+                              </td>
+
+                              {/* 12 Months Blocks */}
+                              {monthsList.map(m => {
+                                const mStart = new Date(selectedCalendarYear, m.num, 1, 0, 0, 0);
+                                const mEnd = new Date(selectedCalendarYear, m.num + 1, 0, 23, 59, 59);
+
+                                const isMonthActive = item.inDate <= mEnd && (item.outDate || item.contractEndDate) >= mStart;
+                                const isMonthCheckIn = item.inDate.getFullYear() === selectedCalendarYear && item.inDate.getMonth() === m.num;
+                                const isMonthCheckOut = !item.isCurrentlyActive && item.outDate && item.outDate.getFullYear() === selectedCalendarYear && item.outDate.getMonth() === m.num;
+                                const isMonthContractEnd = item.contractEndDate.getFullYear() === selectedCalendarYear && item.contractEndDate.getMonth() === m.num;
+                                const isCurrentRealMonth = today.getFullYear() === selectedCalendarYear && today.getMonth() === m.num;
+
+                                return (
+                                  <td
+                                    key={m.num}
+                                    className={`p-1 text-center border-r border-slate-100 ${isCurrentRealMonth ? 'bg-indigo-50/20' : ''}`}
+                                  >
+                                    {isMonthActive ? (
+                                      <div
+                                        className={`w-full py-1.5 rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1 ${
+                                          isMonthCheckOut
+                                            ? 'bg-slate-800 text-white font-black ring-1 ring-slate-600'
+                                            : isMonthContractEnd && item.isExpiringSoon
+                                            ? 'bg-amber-500 text-white animate-pulse'
+                                            : isMonthCheckIn
+                                            ? 'bg-blue-600 text-white font-black'
+                                            : item.isExpired
+                                            ? 'bg-rose-500 text-white'
+                                            : 'bg-emerald-500 text-white'
+                                        }`}
+                                        title={`${m.full} ${selectedCalendarYear}: ${item.name} (${item.roomNumber} - ${item.branchName})`}
+                                      >
+                                        {isMonthCheckIn ? 'IN' : isMonthCheckOut ? 'OUT' : isMonthContractEnd ? 'END' : '✓'}
+                                      </div>
+                                    ) : (
+                                      <div className="text-slate-300 text-xs">-</div>
+                                    )}
+                                  </td>
+                                );
+                              })}
+
+                              <td
+                                className="py-2 px-3 sticky right-0 z-10 bg-white group-hover:bg-slate-50 text-right border-l border-slate-200"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedBlockTenant(item)}
+                                  className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] border border-indigo-200 transition cursor-pointer"
+                                >
+                                  Kelola
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* VIEW 3: MATRIKS BLOK SEWA & SISA KONTRAK (Gantt-Style Matrix) */}
+            {calendarViewMode === 'matrix' && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 text-[10px] font-black uppercase">
-                        Tabel 1
+                        Matriks & Gantt
                       </span>
-                      <h4 className="font-extrabold text-sm text-slate-900 font-heading flex items-center gap-2">
-                        <span>Tabel Matriks Retensi Kohort Bulanan</span>
+                      <h4 className="font-extrabold text-sm text-slate-900 font-heading">
+                        Matriks Durasi Kontrak, Sisa Masa Sewa & Estimasi LTV
                       </h4>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Menampilkan persentase & jumlah penghuni yang tetap bertahan menyewa dari bulan ke bulan berdasarkan kelompok bulan masuk.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-600 flex-wrap">
-                    <span className="px-2 py-0.5 rounded bg-emerald-600 text-white font-bold">&ge;90% (Sangat Baik)</span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold">&ge;60% (Stabil)</span>
-                    <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">&ge;40% (Cukup)</span>
-                    <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold">&lt;40% (Drop/Keluar)</span>
-                  </div>
-                </div>
-
-                {cohortMatrix.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                          <th className="py-3 px-3.5 rounded-l-lg w-10 text-center">No</th>
-                          <th className="py-3 px-3.5">Bulan Check-In (Kohort)</th>
-                          <th className="py-3 px-3 text-center">Jumlah Masuk</th>
-                          <th className="py-3 px-3 text-center">Bulan 1 (M0)</th>
-                          <th className="py-3 px-3 text-center">Bulan 2 (M1)</th>
-                          <th className="py-3 px-3 text-center">Bulan 3 (M2)</th>
-                          <th className="py-3 px-3 text-center">Bulan 4 (M3)</th>
-                          <th className="py-3 px-3 text-center">Bulan 7 (M6)</th>
-                          <th className="py-3 px-3 text-center">Bulan 13 (M12)</th>
-                          <th className="py-3 px-3.5 text-center rounded-r-lg">Evaluasi Kohort</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {cohortMatrix.map(row => (
-                          <tr key={row.month} className="hover:bg-slate-50/80 transition">
-                            <td className="py-3 px-3.5 text-center font-bold text-slate-400">
-                              {row.index}
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <div className="font-extrabold text-slate-900 font-heading">
-                                {formatIndonesianMonthYear(row.month)}
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                Kode: {row.month}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className="font-bold text-slate-800 px-2 py-0.5 bg-slate-100 rounded-md border border-slate-200">
-                                {row.size} Orang
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] ${getRetentionBadgeStyle(row.m0)}`}>
-                                {row.m0}% <span className="text-[9px] opacity-80">({row.m0Count})</span>
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] ${getRetentionBadgeStyle(row.m1)}`}>
-                                {row.m1}% <span className="text-[9px] opacity-80">({row.m1Count})</span>
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] ${getRetentionBadgeStyle(row.m2)}`}>
-                                {row.m2}% <span className="text-[9px] opacity-80">({row.m2Count})</span>
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] ${getRetentionBadgeStyle(row.m3)}`}>
-                                {row.m3}% <span className="text-[9px] opacity-80">({row.m3Count})</span>
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] ${getRetentionBadgeStyle(row.m6)}`}>
-                                {row.m6}% <span className="text-[9px] opacity-80">({row.m6Count})</span>
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[11px] ${getRetentionBadgeStyle(row.m12)}`}>
-                                {row.m12}% <span className="text-[9px] opacity-80">({row.m12Count})</span>
-                              </span>
-                            </td>
-                            <td className="py-3 px-3.5 text-center">
-                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${row.status.color}`}>
-                                {row.status.label}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-slate-400 text-xs italic">
-                    Belum ada data riwayat kohort yang cukup untuk kalkulasi matriks.
-                  </div>
-                )}
-
-                {/* Table Reading Helper Note */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-xs flex items-start gap-2">
-                  <Info className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
-                  <p className="text-[11px] leading-relaxed">
-                    <strong>Cara Membaca Tabel:</strong> Baris menunjukkan bulan saat penghuni mulai sewa. Kolom <strong>Bulan 1 s/d Bulan 13</strong> menunjukkan berapa persen penghuni yang tetap lanjut menyewa pada bulan tersebut. Angka dalam kurung menandakan jumlah penghuni yang aktif.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* TABEL 2: Tabel Analisis Retensi & Nilai Sewa Berdasarkan Profesi */}
-            {(cohortTableView === 'all' || cohortTableView === 'occupation') && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3.5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 text-[10px] font-black uppercase">
-                        Tabel 2
-                      </span>
-                      <h4 className="font-extrabold text-sm text-slate-900 font-heading flex items-center gap-2">
-                        <span>Tabel Analisis Retensi & Daya Tahan Berdasarkan Profesi</span>
-                      </h4>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Perbandingan performa lama tinggal, loyalitas, dan kontribusi nilai uang sewa (LTV) per kelompok latar belakang pekerjaan.
+                      Daftar individual seluruh penghuni kos dengan durasi berjalan, progress bar sewa, tanggal penagihan, dan aksi cepat perpanjangan kontrak.
                     </p>
                   </div>
 
                   <span className="text-xs text-slate-500 font-medium">
-                    Total {occupationStats.length} Kategori Profesi
+                    Menampilkan {filteredCalendarRecords.length} dari {tenantCalendarRecords.length} Penyewa
                   </span>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left border-collapse">
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-xs text-left border-collapse min-w-[850px]">
                     <thead>
                       <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                        <th className="py-3 px-3.5 rounded-l-lg w-10 text-center">No</th>
-                        <th className="py-3 px-3.5">Kategori Profesi</th>
-                        <th className="py-3 px-3.5 text-center">Total Penyewa</th>
-                        <th className="py-3 px-3.5 text-center">Status Huni</th>
-                        <th className="py-3 px-3.5 text-center">Rata-rata Masa Tinggal</th>
-                        <th className="py-3 px-3.5 text-center">Rata-rata LTV Sewa</th>
-                        <th className="py-3 px-3.5 text-center">Retensi &gt;6 Bulan</th>
-                        <th className="py-3 px-3.5 text-center rounded-r-lg">Tingkat Keloyalan</th>
+                        <th className="py-3 px-3.5 w-10 text-center">No</th>
+                        <th className="py-3 px-3.5">Penghuni & Kamar</th>
+                        <th className="py-3 px-3.5">Periode Kontrak</th>
+                        <th className="py-3 px-3.5">Progress Durasi Kontrak</th>
+                        <th className="py-3 px-3.5 text-center">Sisa Waktu</th>
+                        <th className="py-3 px-3.5">Total Kontribusi (LTV)</th>
+                        <th className="py-3 px-3.5 text-center">Status</th>
+                        <th className="py-3 px-3.5 text-right">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {occupationStats.map(stat => (
-                        <tr key={stat.occupation} className="hover:bg-slate-50/80 transition">
-                          <td className="py-3 px-3.5 text-center font-bold text-slate-400">
-                            {stat.index}
+                      {filteredCalendarRecords.map((item, index) => (
+                        <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-3 text-center font-bold text-slate-400">
+                            {index + 1}
                           </td>
+
                           <td className="py-3 px-3.5">
-                            <div className="font-extrabold text-slate-900 font-heading flex items-center gap-2">
-                              <Briefcase className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                              <span>{stat.occupation}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              Porsi {stat.pctOfTotal}% dari seluruh penghuni
+                            <div className="flex items-center gap-2.5">
+                              <img
+                                src={
+                                  item.avatarUrl ||
+                                  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
+                                }
+                                alt={item.name}
+                                className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
+                              />
+                              <div>
+                                <div className="font-extrabold text-slate-900 font-heading">
+                                  {item.name}
+                                </div>
+                                <div className="text-[11px] text-slate-500 flex items-center gap-1 flex-wrap mt-0.5">
+                                  <span className="font-bold text-indigo-700">{item.roomNumber}</span>
+                                  <span>&bull;</span>
+                                  <span>{item.roomType}</span>
+                                  <span>&bull;</span>
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-teal-50 text-teal-800 font-semibold text-[9px] border border-teal-200">
+                                    <Building2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />
+                                    <span>{item.branchName}</span>
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </td>
-                          <td className="py-3 px-3.5 text-center font-bold text-slate-800">
-                            {stat.count} Orang
+
+                          <td className="py-3 px-3.5">
+                            <div className="font-semibold text-slate-800">
+                              {formatIndonesianDate(item.inDateStr)} &rarr; {formatIndonesianDate(item.contractEndDateStr)}
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">
+                              Durasi: {item.contractMonths} Bulan (Jatuh tempo tgl {item.billingDueDay})
+                              {item.outDateStr && !item.isCurrentlyActive && (
+                                <span className="text-rose-600 font-bold ml-1">
+                                  • Keluar/OUT: {formatIndonesianDate(item.outDateStr)}
+                                </span>
+                              )}
+                            </div>
                           </td>
-                          <td className="py-3 px-3.5 text-center">
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
-                              {stat.activeCount} Aktif
-                            </span>
-                            {stat.checkoutCount > 0 && (
-                              <span className="ml-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-[10px]">
-                                {stat.checkoutCount} Checkout
+
+                          <td className="py-3 px-3.5 max-w-xs">
+                            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700 mb-1">
+                              <span>Bulan ke-{item.stayDurationMonths} dari {item.contractMonths} Bln</span>
+                              <span className="text-slate-500">{item.progressPct}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  !item.isCurrentlyActive
+                                    ? 'bg-slate-400'
+                                    : item.isExpired
+                                    ? 'bg-rose-500'
+                                    : item.isExpiringSoon
+                                    ? 'bg-amber-500'
+                                    : 'bg-emerald-500'
+                                }`}
+                                style={{ width: `${item.progressPct}%` }}
+                              />
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3.5 text-center font-semibold">
+                            {item.isCurrentlyActive ? (
+                              item.remainingDays <= 0 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold text-[10px]">
+                                  Kontrak Berakhir
+                                </span>
+                              ) : item.remainingDays <= 30 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px] animate-pulse">
+                                  Sisa {item.remainingDays} Hari
+                                </span>
+                              ) : (
+                                <span className="text-slate-700 font-medium text-[11px]">
+                                  Sisa {item.remainingDays} Hari
+                                </span>
+                              )
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 font-bold text-[10px]">
+                                OUT (Selesai Sewa)
                               </span>
                             )}
                           </td>
-                          <td className="py-3 px-3.5 text-center font-bold text-purple-700">
-                            {stat.avgStay} Bulan
+
+                          <td className="py-3 px-3.5 font-mono font-black text-slate-900">
+                            {formatRupiah(item.totalLtv)}
                           </td>
-                          <td className="py-3 px-3.5 text-center font-mono font-black text-emerald-700">
-                            {formatRupiah(stat.avgLtv)}
-                          </td>
+
                           <td className="py-3 px-3.5 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200">
-                                <div
-                                  className="h-full bg-emerald-500 rounded-full"
-                                  style={{ width: `${stat.retention6M}%` }}
-                                />
-                              </div>
-                              <span className="font-bold text-[11px] text-slate-700">{stat.retention6M}%</span>
+                            {item.calendarStatus === 'active' && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
+                                Aktif Menghuni
+                              </span>
+                            )}
+                            {item.calendarStatus === 'expiring' && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[10px]">
+                                Perlu Follow-up
+                              </span>
+                            )}
+                            {item.calendarStatus === 'expired' && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[10px]">
+                                Lewat Kontrak
+                              </span>
+                            )}
+                            {item.calendarStatus === 'checkout' && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 font-bold text-[10px]">
+                                OUT (Selesai)
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {item.phone && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendReminderWA(item, item.isExpiringSoon ? 'perpanjang' : 'sapaan')}
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer ${
+                                    item.isExpiringSoon
+                                      ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-2xs animate-bounce'
+                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                  }`}
+                                  title="Chat WhatsApp"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                  <span>{item.isExpiringSoon ? 'Tanya Perpanjang' : 'Chat WA'}</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBlockTenant(item)}
+                                className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition cursor-pointer"
+                              >
+                                Detail
+                              </button>
                             </div>
-                          </td>
-                          <td className="py-3 px-3.5 text-center">
-                            <span className="font-bold text-[11px] text-slate-800">
-                              {stat.loyaltyRating}
-                            </span>
                           </td>
                         </tr>
                       ))}
@@ -1516,233 +2078,184 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
                 </div>
               </div>
             )}
-
-            {/* TABEL 3: Tabel Rincian Siklus Hidup & Durasi Berjalan Setiap Penghuni */}
-            {(cohortTableView === 'all' || cohortTableView === 'lifecycle') && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-black uppercase">
-                        Tabel 3
-                      </span>
-                      <h4 className="font-extrabold text-sm text-slate-900 font-heading flex items-center gap-2">
-                        <span>Tabel Rincian Siklus Hidup & Durasi Kontrak Setiap Penghuni</span>
-                      </h4>
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Daftar individual seluruh penghuni kos dengan durasi tinggal berjalan, progress kontrak sewa, estimasi LTV, dan aksi cepat WhatsApp.
-                    </p>
-                  </div>
-
-                  {/* Stage Filter Chips */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto">
-                    <button
-                      onClick={() => setCohortFilterStage('all')}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                        cohortFilterStage === 'all'
-                          ? 'bg-slate-800 text-white shadow-2xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      Semua ({tenantCohortRecords.length})
-                    </button>
-                    <button
-                      onClick={() => setCohortFilterStage('new')}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                        cohortFilterStage === 'new'
-                          ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                      }`}
-                    >
-                      Baru Masuk (M1-M2)
-                    </button>
-                    <button
-                      onClick={() => setCohortFilterStage('mid')}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                        cohortFilterStage === 'mid'
-                          ? 'bg-amber-600 text-white shadow-2xs'
-                          : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                      }`}
-                    >
-                      Masa Stabil (M3-M6)
-                    </button>
-                    <button
-                      onClick={() => setCohortFilterStage('loyal')}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                        cohortFilterStage === 'loyal'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                      }`}
-                    >
-                      Penghuni Loyal (&gt;6 Bln)
-                    </button>
-                    <button
-                      onClick={() => setCohortFilterStage('expiring')}
-                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                        cohortFilterStage === 'expiring'
-                          ? 'bg-rose-600 text-white shadow-2xs font-bold'
-                          : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                      }`}
-                    >
-                      Segera Berakhir ({expiringSoonCount})
-                    </button>
-                  </div>
-                </div>
-
-                {filteredCohortRecords.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                          <th className="py-3 px-3 rounded-l-lg w-10 text-center">No</th>
-                          <th className="py-3 px-3.5">Penghuni & Kamar</th>
-                          <th className="py-3 px-3">Profesi</th>
-                          <th className="py-3 px-3.5">Kohort Check-In</th>
-                          <th className="py-3 px-3.5">Durasi & Progress Kontrak</th>
-                          <th className="py-3 px-3">Sisa Masa Sewa</th>
-                          <th className="py-3 px-3.5">Estimasi LTV</th>
-                          <th className="py-3 px-3.5">Status Segmen</th>
-                          <th className="py-3 px-3.5 text-right rounded-r-lg">Follow-up WA</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredCohortRecords.map((item, index) => (
-                          <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                            <td className="py-3 px-3 text-center font-bold text-slate-400">
-                              {index + 1}
-                            </td>
-
-                            <td className="py-3 px-3.5">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 font-bold flex items-center justify-center shrink-0 border border-purple-200">
-                                  {item.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                  <span className="font-extrabold text-slate-900 block font-heading">
-                                    {item.name}
-                                  </span>
-                                  <span className="text-[11px] text-slate-500">
-                                    {item.roomNumber} &bull; {item.roomType}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="py-3 px-3">
-                              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold text-[10px] border border-slate-200">
-                                {item.occupation}
-                              </span>
-                            </td>
-
-                            <td className="py-3 px-3.5">
-                              <div className="font-semibold text-slate-800">
-                                {formatIndonesianMonthYear(item.cohortMonth)}
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                Masuk: {formatIndonesianDate(item.checkInDate)}
-                              </div>
-                            </td>
-
-                            <td className="py-3 px-3.5 max-w-xs">
-                              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700 mb-1">
-                                <span>Bulan ke-{item.stayDurationMonths} dari {item.contractMonths} Bln</span>
-                                <span className="text-slate-500">{item.contractProgressPct}%</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200">
-                                <div
-                                  className={`h-full rounded-full transition-all ${
-                                    item.isExpiringSoon
-                                      ? 'bg-rose-500'
-                                      : item.stayDurationMonths >= 6
-                                      ? 'bg-emerald-500'
-                                      : 'bg-purple-500'
-                                  }`}
-                                  style={{ width: `${item.contractProgressPct}%` }}
-                                />
-                              </div>
-                            </td>
-
-                            <td className="py-3 px-3 font-semibold">
-                              {item.isCurrentlyActive ? (
-                                item.remainingDays <= 0 ? (
-                                  <span className="text-rose-600 font-bold">Kontrak Berakhir</span>
-                                ) : item.remainingDays <= 30 ? (
-                                  <span className="text-rose-600 font-bold animate-pulse">Sisa {item.remainingDays} Hari</span>
-                                ) : (
-                                  <span className="text-slate-600">Sisa {item.remainingDays} Hari</span>
-                                )
-                              ) : (
-                                <span className="text-slate-400 italic">Sudah Checkout</span>
-                              )}
-                            </td>
-
-                            <td className="py-3 px-3.5 font-mono font-extrabold text-slate-900">
-                              {formatRupiah(item.totalLtv)}
-                            </td>
-
-                            <td className="py-3 px-3.5">
-                              {item.stage === 'Penghuni Loyal (>6 bln)' && (
-                                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] inline-flex items-center gap-1">
-                                  <Award className="w-3 h-3 text-emerald-600" />
-                                  Loyal (&gt;6 Bln)
-                                </span>
-                              )}
-                              {item.stage === 'Masa Stabil (M3-M6)' && (
-                                <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[10px]">
-                                  Stabil (M3-M6)
-                                </span>
-                              )}
-                              {item.stage === 'Baru Masuk (M1-M2)' && (
-                                <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[10px]">
-                                  Baru Masuk
-                                </span>
-                              )}
-                              {item.stage === 'Masa Selesai / Checkout' && (
-                                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-semibold text-[10px]">
-                                  Checkout / Riwayat
-                                </span>
-                              )}
-                            </td>
-
-                            <td className="py-3 px-3.5 text-right">
-                              {item.phone && (
-                                <button
-                                  onClick={() => {
-                                    const text = item.isExpiringSoon
-                                      ? `Halo Kak ${item.name} (${item.roomNumber}), masa sewa kos Kakak akan berakhir dalam waktu dekat (${formatIndonesianDate(item.contractEndDate)}). Apakah Kakak berkenan memperpanjang sewa untuk periode berikutnya? Terima kasih - Pengelola ${settings.kostName}`
-                                      : `Halo Kak ${item.name} (${item.roomNumber}), salam dari pengelola ${settings.kostName}. Bagaimana kenyamanan kamar dan fasilitas kos selama ini? Terima kasih.`;
-                                    const clean = item.phone.replace(/\D/g, '');
-                                    const formatted = clean.startsWith('0') ? '62' + clean.slice(1) : clean.startsWith('62') ? clean : '62' + clean;
-                                    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(text)}`, '_blank');
-                                  }}
-                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 cursor-pointer ${
-                                    item.isExpiringSoon
-                                      ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-2xs animate-bounce'
-                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                  }`}
-                                  title={item.isExpiringSoon ? 'Tanya Perpanjangan Sewa via WA' : 'Chat Penghuni via WA'}
-                                >
-                                  <MessageSquare className="w-3.5 h-3.5" />
-                                  <span>{item.isExpiringSoon ? 'Tanya Perpanjang' : 'Chat WA'}</span>
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-slate-400 text-xs italic">
-                    Tidak ada data penyewa yang sesuai dengan filter kohort yang dipilih.
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
+
+      {/* ================= MODAL: DETAIL BLOK KALENDER & PERPANJANGAN SEWA ================= */}
+      {selectedBlockTenant && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base font-heading">
+                    Detail Blok Sewa & Masa Tinggal
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    {selectedBlockTenant.name} &bull; {selectedBlockTenant.roomNumber}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedBlockTenant(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 sm:p-6 space-y-4 text-xs">
+              {/* Tenant & Room Profile Card */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+                <img
+                  src={
+                    selectedBlockTenant.avatarUrl ||
+                    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'
+                  }
+                  alt={selectedBlockTenant.name}
+                  className="w-12 h-12 rounded-full object-cover border border-slate-300 shadow-2xs shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="font-extrabold text-slate-900 text-sm truncate">
+                    {selectedBlockTenant.name}
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono">
+                    NIK: {selectedBlockTenant.identityNumber || '-'} &bull; {selectedBlockTenant.phone}
+                  </div>
+                  <div className="text-[11px] text-indigo-700 font-semibold mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>{selectedBlockTenant.roomNumber} ({selectedBlockTenant.roomType})</span>
+                    <span>&bull;</span>
+                    <span>{formatRupiah(selectedBlockTenant.roomPrice)}/bln</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 font-bold text-[10px] border border-teal-200">
+                      <Building2 className="w-3 h-3 text-teal-600" />
+                      <span>Cabang: {selectedBlockTenant.branchName}</span>
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                      selectedBlockTenant.isCurrentlyActive 
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                        : 'bg-slate-100 text-slate-700 border border-slate-300'
+                    }`}>
+                      {selectedBlockTenant.isCurrentlyActive ? '🟢 Aktif Menghuni' : '⚪ Status OUT (Selesai Sewa)'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline Status Box */}
+              <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/50 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-700">Periode Kontrak Sewa:</span>
+                  <span className="font-extrabold text-indigo-900">
+                    {selectedBlockTenant.contractMonths} Bulan
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 block text-[10px]">Mulai Check-In:</span>
+                    <strong className="text-slate-800">{formatIndonesianDate(selectedBlockTenant.inDateStr)}</strong>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                    <span className="text-slate-500 block text-[10px]">
+                      {selectedBlockTenant.isCurrentlyActive ? 'Batas Akhir Kontrak:' : 'Tanggal Selesai (OUT):'}
+                    </span>
+                    <strong className="text-slate-800">
+                      {formatIndonesianDate(selectedBlockTenant.outDateStr || selectedBlockTenant.contractEndDateStr)}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Progress Bar & Days Remaining */}
+                <div className="space-y-1 pt-1">
+                  <div className="flex items-center justify-between text-[11px] font-semibold">
+                    <span className="text-slate-600">Durasi Berjalan: Bulan ke-{selectedBlockTenant.stayDurationMonths}</span>
+                    <span className={selectedBlockTenant.isExpiringSoon ? 'text-rose-600 font-bold animate-pulse' : 'text-slate-700'}>
+                      {selectedBlockTenant.remainingDays <= 0
+                        ? 'Kontrak Berakhir'
+                        : `Sisa ${selectedBlockTenant.remainingDays} Hari`}
+                    </span>
+                  </div>
+                  <div className="w-full bg-white h-2 rounded-full overflow-hidden border border-slate-200">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        selectedBlockTenant.isExpiringSoon ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${selectedBlockTenant.progressPct}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Contract Extension Controls */}
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-950 flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Perpanjang Masa Kontrak Sewa</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold">Otomatis Simpan Cloud</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[1, 3, 6, 12].map(num => (
+                    <button
+                      key={num}
+                      type="button"
+                      disabled={isExtendingLoading}
+                      onClick={() => handleExtendContract(String(selectedBlockTenant.id), num)}
+                      className="py-2 rounded-lg bg-white hover:bg-emerald-600 hover:text-white text-emerald-900 border border-emerald-300 font-bold text-xs transition cursor-pointer shadow-2xs text-center disabled:opacity-50"
+                    >
+                      +{num} Bulan
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* WhatsApp Quick Actions */}
+              <div className="space-y-2">
+                <div className="font-bold text-slate-700 text-xs">
+                  Kirim Pengingat & Follow-up via WhatsApp:
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSendReminderWA(selectedBlockTenant, 'perpanjang')}
+                    className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-xs flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="text-left">Pengingat Perpanjangan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSendReminderWA(selectedBlockTenant, 'tagihan')}
+                    className="p-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold text-xs flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <CreditCard className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="text-left">Pengingat Tagihan Sewa</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setSelectedBlockTenant(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Check-In New Tenant Modal */}
       {isCheckInModalOpen && (
@@ -2329,6 +2842,12 @@ export const TenantManagementView: React.FC<TenantManagementViewProps> = ({ onOp
           </div>
         </div>
       )}
+      {/* Calendar Conflict Detector & Resolution Engine Modal */}
+      <CalendarConflictDetectorModal
+        isOpen={isConflictDetectorOpen}
+        onClose={() => setIsConflictDetectorOpen(false)}
+        conflicts={calendarConflicts}
+      />
     </div>
   );
 };
