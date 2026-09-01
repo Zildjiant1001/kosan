@@ -292,22 +292,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterPortal, onOpenL
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col selection:bg-emerald-600 selection:text-white relative">
       {/* ================= 0. SUPER ADMIN EDIT CONTROL BAR ================= */}
       {isSuperAdmin && (
-        <aside aria-label="Super Admin Control Bar" className="bg-slate-950 text-white border-b border-emerald-500/40 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs z-50 sticky top-0 shadow-lg backdrop-blur-md">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black text-[10px] tracking-wide flex items-center gap-1 shadow-xs">
+        <aside aria-label="Super Admin Control Bar" className="bg-slate-950 text-white border-b border-emerald-500/40 px-3 sm:px-6 py-2 flex items-center justify-between gap-2.5 overflow-x-auto no-scrollbar scroll-smooth text-xs z-50 sticky top-0 shadow-lg backdrop-blur-md">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black text-[10px] tracking-wide flex items-center gap-1 shadow-xs shrink-0">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>SUPER ADMIN</span>
             </span>
-            <span className="text-slate-300 font-medium hidden sm:inline">
-              Mode Kelola Landing Page: Edit teks, headline, fasilitas & testimoni secara langsung.
+            <span className="text-slate-300 font-medium hidden md:inline text-[11px]">
+              Mode Kelola Landing Page: Edit teks, headline, fasilitas & testimoni langsung.
             </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setIsInlineEditMode(!isInlineEditMode)}
-              className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
                 isInlineEditMode
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-2xs'
                   : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
@@ -315,21 +315,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterPortal, onOpenL
               title="Tampilkan / sembunyikan tombol edit cepat pada setiap bagian"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Tombol Edit Cepat:</span> <span>{isInlineEditMode ? 'Aktif' : 'Off'}</span>
+              <span className="hidden sm:inline">Edit Cepat:</span> <span>{isInlineEditMode ? 'Aktif' : 'Off'}</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleOpenEditor('branding')}
-              className="px-3.5 py-1 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 sm:px-3.5 py-1 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-xs transition shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span>Edit Konten Landing Page</span>
+              <span>Edit Konten</span>
             </button>
 
             <a
               href="/enterprise"
-              className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-1.5"
+              className="px-2.5 sm:px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-1.5 shrink-0"
             >
               <Building2 className="w-3.5 h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Portal Enterprise</span>

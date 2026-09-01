@@ -262,10 +262,11 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-emerald-600 selection:text-white">
       {/* 1. TOP ENTERPRISE HEADER (Only shown on standalone /enterprise page) */}
+      {/* 1. TOP ENTERPRISE HEADER (Only shown on standalone /enterprise page) */}
       {!hideHeader && (
-        <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 text-white shadow-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16 gap-4">
+        <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-md w-full">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 w-full">
+            <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
               {/* Enterprise Logo (Clickable to go to Landing Page) */}
               <button
                 type="button"
@@ -273,29 +274,29 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                   if (onGoToLanding) onGoToLanding();
                   else router.push('/');
                 }}
-                className="flex items-center gap-3 text-left group cursor-pointer"
+                className="flex items-center gap-2 sm:gap-3 text-left group cursor-pointer min-w-0"
                 title="Buka Halaman Landing Page"
               >
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-black shadow-lg group-hover:scale-105 transition-transform">
-                  <Shield className="w-6 h-6 text-slate-950" />
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-amber-500 via-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-black shadow-lg group-hover:scale-105 transition-transform shrink-0">
+                  <Shield className="w-4 h-4 sm:w-6 sm:h-6 text-slate-950" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-lg tracking-tight text-white font-heading group-hover:text-emerald-300 transition-colors">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="font-extrabold text-base sm:text-lg tracking-tight text-white font-heading group-hover:text-emerald-300 transition-colors whitespace-nowrap">
                       KostHub Enterprise
                     </span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
-                      Super Admin Portal
+                    <span className="hidden md:inline-flex px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider whitespace-nowrap">
+                      Super Admin
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 hidden sm:block">
-                    Pusat Pengelolaan Akun, Verifikasi Pendaftaran & Manajemen Multi-Properti
+                  <p className="text-[11px] text-slate-400 hidden sm:block leading-tight">
+                    Pusat Pengelolaan Akun, Verifikasi & Multi-Properti
                   </p>
                 </div>
               </button>
 
               {/* Header Right Actions */}
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
                 {/* Direct Jump to Landing Page */}
                 <button
                   type="button"
@@ -309,17 +310,17 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                       router.push('/');
                     }
                   }}
-                  className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer hover:border-emerald-400 active:scale-95 shadow-xs"
+                  className="px-2 sm:px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/50 hover:bg-emerald-900/70 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer hover:border-emerald-400 active:scale-95 shadow-xs"
                   title="Buka Halaman Landing Page Utama (Tampilan Tamu / Pengunjung)"
                 >
-                  <Globe className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Landing Page</span>
+                  <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="hidden sm:inline">Landing Page</span>
                 </button>
 
                 {/* Ganti Akun (Switch Account Selector) */}
-                <div className="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 px-2.5 py-1.5 rounded-xl shadow-xs text-xs">
+                <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-800/90 border border-slate-700 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl shadow-xs text-xs">
                   <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-slate-400 font-medium hidden sm:inline">Ganti Akun:</span>
+                  <span className="text-slate-400 font-medium hidden md:inline">Akun:</span>
                   <select
                     value={activeAppUser?.id || 'usr-admin-01'}
                     onChange={(e) => {
@@ -335,7 +336,8 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                         }
                       }
                     }}
-                    className="bg-slate-900 text-amber-300 font-bold border border-slate-700 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                    className="bg-slate-900 text-amber-300 font-bold border-0 rounded-lg px-1 sm:px-2 py-0.5 text-[11px] sm:text-xs focus:outline-none cursor-pointer max-w-[95px] xs:max-w-[120px] sm:max-w-[180px] truncate"
+                    title="Ganti Akun Pengguna Aktif"
                   >
                     {users
                       .filter(u => u.status === 'active')
@@ -348,7 +350,7 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                 </div>
 
                 {/* Quick Jump to Portal Pemilik */}
-                <div className="hidden md:flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
+                <div className="hidden lg:flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
                   <button
                     onClick={() => {
                       setRole('pemilik');
@@ -362,86 +364,94 @@ export const EnterprisePortalView: React.FC<EnterprisePortalViewProps> = ({
                   </button>
                 </div>
 
+                {/* Logout Button */}
                 <button
                   type="button"
                   id="enterprise-logout-btn"
                   onClick={() => {
-                    logoutAppUser();
-                    if (typeof window !== 'undefined') {
-                      window.location.href = '/login';
+                    if (onLogout) {
+                      onLogout();
+                    } else {
+                      logoutAppUser();
+                      if (typeof window !== 'undefined') {
+                        window.location.href = '/login';
+                      }
                     }
                   }}
-                  className="px-3 py-1.5 rounded-xl border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer hover:border-rose-700 active:scale-95"
+                  className="px-2 sm:px-3 py-1.5 rounded-xl border border-rose-900/50 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer hover:border-rose-700 active:scale-95"
                   title="Keluar dari Akun Super Admin & Masuk ke Halaman Login"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <LogOut className="w-3.5 h-3.5 shrink-0" />
                   <span className="hidden sm:inline">Keluar</span>
                 </button>
               </div>
+            </div>
           </div>
-        </div>
-      </header>
-    )}
+        </header>
+      )}
 
-    {/* Navigation Sub-Tabs */}
-    <div className="bg-slate-900/80 border-b border-slate-800 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto py-2.5 no-scrollbar text-xs">
-        <button
-          onClick={() => setActiveTab('approvals')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            activeTab === 'approvals'
-              ? 'bg-amber-500 text-slate-950 shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
+      {/* Navigation Sub-Tabs */}
+      <div className="bg-slate-900/90 border-b border-slate-800 px-3 sm:px-6 lg:px-8 sticky top-14 sm:top-16 z-20 backdrop-blur-md">
+        <nav
+          aria-label="Navigasi Super Admin"
+          className="max-w-7xl mx-auto flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-2 sm:py-2.5 no-scrollbar scroll-smooth text-xs"
         >
-          <Clock className="w-4 h-4" />
-          <span>Antrian Persetujuan Sign-Up</span>
-          {pendingUsers.length > 0 && (
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-              activeTab === 'approvals' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950 animate-pulse'
-            }`}>
-              {pendingUsers.length}
-            </span>
-          )}
-        </button>
+          <button
+            onClick={() => setActiveTab('approvals')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'approvals'
+                ? 'bg-amber-500 text-slate-950 shadow-md ring-1 ring-amber-400'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span>Antrian Sign-Up</span>
+            {pendingUsers.length > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                activeTab === 'approvals' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950 animate-pulse'
+              }`}>
+                {pendingUsers.length}
+              </span>
+            )}
+          </button>
 
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            activeTab === 'users'
-              ? 'bg-emerald-500 text-slate-950 shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Semua Pengguna ({users.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'users'
+                ? 'bg-emerald-500 text-slate-950 shadow-md ring-1 ring-emerald-400'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span>Pengguna ({users.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('branches')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            activeTab === 'branches'
-              ? 'bg-teal-500 text-slate-950 shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          <span>Multi-Cabang Properti ({branches.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('branches')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'branches'
+                ? 'bg-teal-500 text-slate-950 shadow-md ring-1 ring-teal-400'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span>Cabang ({branches.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('audit')}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            activeTab === 'audit'
-              ? 'bg-blue-500 text-slate-950 shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Activity className="w-4 h-4" />
-          <span>Log Aktivitas & Audit</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('audit')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+              activeTab === 'audit'
+                ? 'bg-blue-500 text-slate-950 shadow-md ring-1 ring-blue-400'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span>Log Audit</span>
+          </button>
+        </nav>
       </div>
-    </div>
 
       {/* 2. MAIN CONTAINER */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
